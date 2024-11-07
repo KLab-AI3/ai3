@@ -52,6 +52,8 @@ repo_csrc = repo_src + '/csrc'
 rst_prolog = f'''
 .. _repo: {repo}
 .. |repo| replace:: **Source Code**
+.. _script: {repo_main + '/bench/gather.py'}
+.. |script| replace:: *script*
 .. _custom: {repo_src + '/custom'}
 .. |custom| replace:: *custom*
 .. _custom_cmake: {repo_main + '/cmake/custom.cmake'}
@@ -62,6 +64,11 @@ rst_prolog = f'''
 .. |doc| replace:: **Documentation**
 .. |name| replace:: *{ai3.__name__}*
 .. |pkg_name| replace:: *{pkg_name}*
+
+.. _cuDNN: https://developer.nvidia.com/cudnn
+.. |cuDNN| replace:: *cuDNN*
+.. _SYCL: https://www.khronos.org/sycl
+.. |SYCL| replace:: *SYCL*
 '''
 
 project = ai3.__name__

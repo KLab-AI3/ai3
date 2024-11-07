@@ -20,9 +20,9 @@ Performance
 
 .. _details:
 
-The `cuDNN <https://developer.nvidia.com/cudnn>`_ and `SYCL
-<https://www.khronos.org/sycl/>`_ benchmarks for both *ai3* and *PyTorch* were
+The |cudnn|_ and |sycl|_ benchmarks for both *ai3* and *PyTorch* were
 gathered using an *NVIDIA GeForce L40S GPU* with *16* gigabytes of memory. The
 final latencies used are the average over *10* runs after *10* warm up runs.
 The implementations for the algorithms include select ones provided by *cuDNN*
-and implementations from *ai3* which leverage *SYCL*.
+and implementations from *ai3* which leverage *SYCL*. Benchmarks are
+gathered using this |script|_.
