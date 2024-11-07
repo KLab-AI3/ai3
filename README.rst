@@ -1,5 +1,7 @@
 .. _repo: https://github.com/KLab-ai3/ai3
 .. |repo| replace:: **Source Code**
+.. _script: https://github.com/KLab-ai3/ai3/tree/main/bench/gather.py
+.. |script| replace:: *script*
 .. _custom: https://github.com/KLab-ai3/ai3/tree/main/src/ai3/custom
 .. |custom| replace:: *custom*
 .. _custom_cmake: https://github.com/KLab-ai3/ai3/tree/main/cmake/custom.cmake
@@ -10,6 +12,11 @@
 .. |doc| replace:: **Documentation**
 .. |name| replace:: *ai3*
 .. |pkg_name| replace:: *aithree*
+
+.. _cuDNN: https://developer.nvidia.com/cudnn
+.. |cuDNN| replace:: *cuDNN*
+.. _SYCL: https://www.khronos.org/sycl
+.. |SYCL| replace:: *SYCL*
 
 |name|
 ======
@@ -124,12 +131,12 @@ Performance
 
 .. _details:
 
-The `cuDNN <https://developer.nvidia.com/cudnn>`_ and `SYCL
-<https://www.khronos.org/sycl/>`_ benchmarks for both *ai3* and *PyTorch* were
+The |cudnn|_ and |sycl|_ benchmarks for both *ai3* and *PyTorch* were
 gathered using an *NVIDIA GeForce L40S GPU* with *16* gigabytes of memory. The
 final latencies used are the average over *10* runs after *10* warm up runs.
 The implementations for the algorithms include select ones provided by *cuDNN*
-and implementations from *ai3* which leverage *SYCL*.
+and implementations from *ai3* which leverage *SYCL*. Benchmarks are
+gathered using this |script|_.
 
 
 Supported Operations, their Algorithms, and Acceleration Platform Compatibility
