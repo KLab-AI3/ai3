@@ -4,7 +4,8 @@ from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
 import torch
-from torch import nn, fx, ops, relu  # type: ignore
+from torch import nn, fx, ops  # type: ignore
+import torch.nn.functional as F
 from torch.nn import grad
 from torch.fx import passes
 from packaging import version
@@ -56,6 +57,72 @@ class Conv2D(nn.Module):
             self.groups, self.algorithm)
 
 
+class MHA(nn.Module):
+    def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
+        super(MHA, self).__init__()
+        self.orig = orig
+        self.algorithm = algorithm
+        self.batch_first = orig.batch_first
+        self.num_heads = orig.num_heads
+        self.embed_dim = orig.embed_dim
+        self.head_dim = orig.head_dim
+        self.kdim = orig.kdim
+        self.vdim = orig.vdim
+
+        if self.embed_dim == self.kdim and self.embed_dim == self.vdim:
+            self.q_proj_weight = orig.in_proj_weight[:self.embed_dim, :]
+            self.k_proj_weight = orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :]
+            self.v_proj_weight = orig.in_proj_weight[2*self.embed_dim:, :]
+            if orig.in_proj_bias is not None:
+                self.q_bias = orig.in_proj_bias[:self.embed_dim]
+                self.k_bias = orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
+                self.v_bias  = orig.in_proj_bias[2*self.embed_dim:]
+            else:
+                self.q_bias = self.k_bias = self.v_bias = None
+        else:
+            self.q_proj_weight = orig.q_proj_weight
+            self.k_proj_weight = orig.k_proj_weight
+            self.v_proj_weight = orig.v_proj_weight
+            self.q_bias, self.k_bias, self.v_bias = None, orig.bias_k, orig.bias_v
+
+        self.out_proj_weight = orig.out_proj.weight
+        self.out_proj_bias = orig.out_proj.bias
+
+
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
+        attn_outputs = []
+        batched = query.dim() == 3
+
+        if not self.batch_first and batched:
+            query, key, value = (x.transpose(1, 0) for x in (query, key, value))
+
+        for i in range(self.num_heads):
+            q = F.linear(query, self.q_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
+            if self.q_bias is not None:
+                q += self.q_bias[i * self.head_dim:(i+1) * self.head_dim]
+
+            k = F.linear(key, self.k_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
+            if self.k_bias is not None:
+                k += self.k_bias[i * self.head_dim:(i+1) * self.head_dim]
+
+            v = F.linear(value, self.v_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
+            if self.v_bias is not None:
+                k += self.v_bias[i * self.head_dim:(i+1) * self.head_dim]
+
+            head = F.scaled_dot_product_attention(q, k, v)
+            attn_outputs.append(head)
+
+        attention_output = torch.cat(attn_outputs, dim=2 if batched else 1)
+
+        out = F.linear(attention_output, self.out_proj_weight)
+        if not self.batch_first and batched:
+            out = out.transpose(1,0)
+
+        if self.out_proj_bias is not None:
+            out += self.out_proj_bias
+        # TODO deal with attn_weights, second return
+        return  out, None
+
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],
     'linear': nn.Linear,
@@ -63,7 +130,8 @@ op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'avgpool2d': nn.AvgPool2d,
     'adaptiveavgpool2d': nn.AdaptiveAvgPool2d,
     'relu': nn.ReLU,
-    'flatten': nn.Flatten
+    'flatten': nn.Flatten,
+    'mha': nn.MultiheadAttention
 }
 
 
@@ -202,7 +270,7 @@ def conv2d_backward(ctx, out_grad):
     return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
 
 
-def setup_context(ctx, inputs, output):
+def conv2d_setup_context(ctx, inputs, output):
     (input, weight, bias, padding_h, padding_w, stride_h, stride_w,
      dilation_h, dilation_w, padding_mode, groups, algorithm) = inputs
     del output, algorithm, bias
@@ -223,7 +291,7 @@ torch.library.custom_op(
 torch.library.register_fake(
     'ai3::conv2d', conv2d_abstract)
 torch.library.register_autograd(
-    'ai3::conv2d', conv2d_backward, setup_context=setup_context)
+    'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
 
 def get_algo_inc_counter(orig: Union[nn.Module, str],
@@ -348,6 +416,8 @@ def default_dtype():
 def swapped_type(op_type) -> Optional[Type]:
     if op_type == nn.Conv2d:
         return Conv2D
+    if op_type == nn.MultiheadAttention:
+        return MHA
     return None
 
 

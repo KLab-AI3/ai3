@@ -25,6 +25,7 @@ SUPPORTED_ALGORITHMS = {
     'conv2d': ['direct', 'smm', 'winograd', 'gemm',
                'implicit gemm', 'implicit precomp gemm',
                'guess', 'mps', 'metal'],
+    'mha': [],
     'linear': ['gemm'],
     'maxpool2d': ['direct'],
     'avgpool2d': ['direct'],

@@ -68,7 +68,7 @@ Example:
 
 
 DEFAULT_ALGOS: Mapping[str, str] = {key: utils.DEFAULT_OPTION for key in [
-    'conv2d', 'linear', 'relu', 'maxpool2d', 'avgpool2d', 'adaptiveavgpool2d', 'flatten']}
+    'conv2d', 'mha', 'linear', 'relu', 'maxpool2d', 'avgpool2d', 'adaptiveavgpool2d', 'flatten']}
 
 SUPPORTED_ALGORITHMS = utils.SUPPORTED_ALGORITHMS
 """The supported operations and their supported algorithms.
@@ -228,6 +228,17 @@ def swap_conv2d(module,
     swap_operation('conv2d', module, algos,
                    sample_input_shape, swap_with=swap_with)
 
+def swap_mha(module,
+                algos: Optional['AlgorithmicSelector'] = None,
+                sample_input_shape: Optional[Sequence[int]] = None,
+                *,
+                swap_with=None):
+    """
+    Calls
+        >>> swap_operation('mha', module, algos, sample_input_shape) # doctest: +SKIP
+    """
+    swap_operation('mha', module, algos,
+                   sample_input_shape, swap_with=swap_with)
 
 def using_mps_and_metal() -> bool:
     """Whether the implementations can use *MPS* and *Metal*"""
