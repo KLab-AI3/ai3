@@ -25,7 +25,7 @@ def add_fail(mes):
 
 def compare_tensors(
         out_tensor, tar_tensor, mes: Optional[str] = None,
-        atol: Optional[float] = 1e-4, print_pass=True) -> None:
+        atol: Optional[float] = 1e-4, print_pass=True, print_diff=True) -> None:
     if atol is None:
         atol = 1e-4
     assert (isinstance(tar_tensor, torch.Tensor))
@@ -70,9 +70,10 @@ def compare_tensors(
         add_fail(mes)
         print(
             f'Failed Test {mes}, {len(different_elements[0])} different elements out of {out.size}')
-        print(
-            '  Tensors differ at the following indices:')
-        for index in zip(*different_elements):
-            index = tuple(map(int, index))
-            print('  at:', index, 'target:',
-                  tar[index], 'output:', out[index])
+        if print_diff:
+            print(
+                '  Tensors differ at the following indices:')
+            for index in zip(*different_elements):
+                index = tuple(map(int, index))
+                print('  at:', index, 'target:',
+                      tar[index], 'output:', out[index])

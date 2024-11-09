@@ -73,55 +73,68 @@ class MHA(nn.Module):
             self.q_proj_weight = orig.in_proj_weight[:self.embed_dim, :]
             self.k_proj_weight = orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :]
             self.v_proj_weight = orig.in_proj_weight[2*self.embed_dim:, :]
+            self.bias_q = self.bias_k = self.bias_v = None
             if orig.in_proj_bias is not None:
-                self.q_bias = orig.in_proj_bias[:self.embed_dim]
-                self.k_bias = orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
-                self.v_bias  = orig.in_proj_bias[2*self.embed_dim:]
+                self.bias_q_in = orig.in_proj_bias[:self.embed_dim]
+                self.bias_k_in= orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
+                self.bias_v_in = orig.in_proj_bias[2*self.embed_dim:]
             else:
-                self.q_bias = self.k_bias = self.v_bias = None
+                self.bias_q_in = self.bias_k_in = self.bias_v_in = None
         else:
             self.q_proj_weight = orig.q_proj_weight
             self.k_proj_weight = orig.k_proj_weight
             self.v_proj_weight = orig.v_proj_weight
-            self.q_bias, self.k_bias, self.v_bias = None, orig.bias_k, orig.bias_v
+            self.bias_q, self.bias_k, self.bias_v = None, orig.bias_k, orig.bias_v
+            self.bias_q_in = self.bias_k_in = self.bias_v_in = None
 
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
 
 
+    # TODO deal with attn_weights, second return
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
-        attn_outputs = []
         batched = query.dim() == 3
+        if self.batch_first and batched:
+            query = query.transpose(1, 0)
+            key = key.transpose(1, 0)
+            value = value.transpose(1, 0)
 
-        if not self.batch_first and batched:
-            query, key, value = (x.transpose(1, 0) for x in (query, key, value))
+        if not batched:
+            query = query.unsqueeze(1)
+            key = key.unsqueeze(1)
+            value = value.unsqueeze(1)
 
-        for i in range(self.num_heads):
-            q = F.linear(query, self.q_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
-            if self.q_bias is not None:
-                q += self.q_bias[i * self.head_dim:(i+1) * self.head_dim]
+        tgt_len, batch_size, embed_dim = query.shape
 
-            k = F.linear(key, self.k_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
-            if self.k_bias is not None:
-                k += self.k_bias[i * self.head_dim:(i+1) * self.head_dim]
+        q = F.linear(query, self.q_proj_weight, self.bias_q_in)
+        k = F.linear(key, self.k_proj_weight, self.bias_k_in)
+        v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
-            v = F.linear(value, self.v_proj_weight[i * self.head_dim:(i+1) * self.head_dim])
-            if self.v_bias is not None:
-                k += self.v_bias[i * self.head_dim:(i+1) * self.head_dim]
+        if self.bias_k is not None and self.bias_v is not None:
+            k = torch.cat([k, self.bias_k.repeat(1, batch_size, 1)])
+            v = torch.cat([v, self.bias_v.repeat(1, batch_size, 1)])
 
-            head = F.scaled_dot_product_attention(q, k, v)
-            attn_outputs.append(head)
+        src_len = k.shape[0]
 
-        attention_output = torch.cat(attn_outputs, dim=2 if batched else 1)
+        q = q.view(tgt_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
+        k = k.view(src_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
+        v = v.view(src_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
 
-        out = F.linear(attention_output, self.out_proj_weight)
-        if not self.batch_first and batched:
-            out = out.transpose(1,0)
+        q = q.view(batch_size, self.num_heads, tgt_len, self.head_dim)
+        k = k.view(batch_size, self.num_heads, src_len, self.head_dim)
+        v = v.view(batch_size, self.num_heads, src_len, self.head_dim)
 
-        if self.out_proj_bias is not None:
-            out += self.out_proj_bias
-        # TODO deal with attn_weights, second return
-        return  out, None
+        attn_output = F.scaled_dot_product_attention(q, k, v)
+        attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
+
+        attn_output = F.linear(attn_output, self.out_proj_weight, self.out_proj_bias)
+        attn_output = attn_output.view(tgt_len, batch_size, attn_output.size(1))
+        if not batched:
+            attn_output = attn_output.squeeze(1)
+        elif self.batch_first:
+            attn_output = attn_output.transpose(1, 0)
+
+        return attn_output, None
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],
