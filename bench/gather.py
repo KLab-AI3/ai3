@@ -1,9 +1,8 @@
 from collections import defaultdict
-from pandas.compat import sys
+import sys
 from torch import nn
 import time
 import torch
-import pandas as pd
 import matplotlib.pyplot as plt
 import ai3
 import os
@@ -188,17 +187,24 @@ def table_save():
         models_data[model] = {}
         models_data[model].update(cudnn_models[model])
 
-    df = pd.DataFrame(models_data).transpose()
-    df = df.round(4)
+    columns = list(models_data[next(iter(models_data))].keys())  # Assuming all models have the same keys
+    row_labels = list(models_data.keys())
+    table_data = []
 
+    for model in row_labels:
+        row = [round(models_data[model].get(col, 0), 4) for col in columns]  # Rounding values
+        table_data.append(row)
+
+    # Plotting
     _, ax = plt.subplots(figsize=(10, 6))
     ax.axis('off')
 
-    table = ax.table(cellText=df.values, colLabels=df.columns,  # type: ignore
-                     rowLabels=df.index, cellLoc='center', loc='center')  # type: ignore
+    # Create the table
+    table = ax.table(cellText=table_data, colLabels=columns,
+                     rowLabels=row_labels, cellLoc='center', loc='center')
     table.auto_set_font_size(False)
     table.set_fontsize(16)
-    table.auto_set_column_width(col=list(range(len(df.columns))))
+    table.auto_set_column_width(col=list(range(len(columns))))
     table.scale(1, 2)
 
     ax.annotate(
