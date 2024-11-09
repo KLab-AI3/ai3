@@ -11,7 +11,7 @@ class MHA(nn.Module):
                                           bias=bias, add_bias_kv=add_bias_kv, batch_first=batch_first,)
 
     def forward(self, q, k, v):
-        attn_output, _ = self.attn(q, k, v)
+        attn_output, _ = self.attn(q, k, v, need_weights=False)
         return attn_output
 
 

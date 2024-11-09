@@ -91,8 +91,8 @@ class MHA(nn.Module):
         self.out_proj_bias = orig.out_proj.bias
 
 
-    # TODO deal with attn_weights, second return
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, need_weights=True):
+        errors.bail_if(need_weights, 'no support for attention weights yet')
         batched = query.dim() == 3
         if self.batch_first and batched:
             query = query.transpose(1, 0)
@@ -417,7 +417,7 @@ def convert_layers(complete_module: nn.Module, dtype,
 
 class Tracer(fx.Tracer):
     def is_leaf_module(self, m, module_qualified_name):
-        if isinstance(m, Conv2D):
+        if isinstance(m, (Conv2D, MHA)):
             return True
         return super().is_leaf_module(m, module_qualified_name)
 
