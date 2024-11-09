@@ -187,19 +187,17 @@ def table_save():
         models_data[model] = {}
         models_data[model].update(cudnn_models[model])
 
-    columns = list(models_data[next(iter(models_data))].keys())  # Assuming all models have the same keys
+    columns = list(models_data[next(iter(models_data))].keys())
     row_labels = list(models_data.keys())
     table_data = []
 
     for model in row_labels:
-        row = [round(models_data[model].get(col, 0), 4) for col in columns]  # Rounding values
+        row = [round(models_data[model].get(col, 0), 4) for col in columns]
         table_data.append(row)
 
-    # Plotting
     _, ax = plt.subplots(figsize=(10, 6))
     ax.axis('off')
 
-    # Create the table
     table = ax.table(cellText=table_data, colLabels=columns,
                      rowLabels=row_labels, cellLoc='center', loc='center')
     table.auto_set_font_size(False)
