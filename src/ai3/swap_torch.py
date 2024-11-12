@@ -57,6 +57,8 @@ class Conv2D(nn.Module):
             self.groups, self.algorithm)
 
 
+
+# TODO easy cuDNN support https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
 class MHA(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
         super(MHA, self).__init__()
@@ -93,48 +95,46 @@ class MHA(nn.Module):
 
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, need_weights=True):
         errors.bail_if(need_weights, 'no support for attention weights yet')
+
         batched = query.dim() == 3
-        if self.batch_first and batched:
-            query = query.transpose(1, 0)
-            key = key.transpose(1, 0)
-            value = value.transpose(1, 0)
-
         if not batched:
-            query = query.unsqueeze(1)
-            key = key.unsqueeze(1)
-            value = value.unsqueeze(1)
+            query = query.unsqueeze(0)
+            key = key.unsqueeze(0)
+            value = value.unsqueeze(0)
+        elif not self.batch_first:
+            query = query.transpose(0, 1)
+            key = key.transpose(0, 1)
+            value = value.transpose(0, 1)
 
-        tgt_len, batch_size, embed_dim = query.shape
+        batch_size, tgt_len, embed_dim = query.shape
+
 
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
         if self.bias_k is not None and self.bias_v is not None:
-            k = torch.cat([k, self.bias_k.repeat(1, batch_size, 1)])
-            v = torch.cat([v, self.bias_v.repeat(1, batch_size, 1)])
+            k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
+            v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
 
-        src_len = k.shape[0]
+        src_len = k.shape[1]
 
-        q = q.view(tgt_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
-        k = k.view(src_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
-        v = v.view(src_len, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
-
-        q = q.view(batch_size, self.num_heads, tgt_len, self.head_dim)
-        k = k.view(batch_size, self.num_heads, src_len, self.head_dim)
-        v = v.view(batch_size, self.num_heads, src_len, self.head_dim)
+        q = q.view(batch_size, tgt_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        k = k.view(batch_size, src_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = v.view(batch_size, src_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
         attn_output = F.scaled_dot_product_attention(q, k, v)
-        attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
+        attn_output = attn_output.permute(0, 2, 1, 3).view(batch_size * tgt_len, embed_dim)
 
         attn_output = F.linear(attn_output, self.out_proj_weight, self.out_proj_bias)
-        attn_output = attn_output.view(tgt_len, batch_size, attn_output.size(1))
+        attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
         if not batched:
-            attn_output = attn_output.squeeze(1)
-        elif self.batch_first:
-            attn_output = attn_output.transpose(1, 0)
+            attn_output = attn_output.squeeze(0)
+        elif not self.batch_first:
+            attn_output = attn_output.transpose(0, 1)
 
         return attn_output, None
+
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],
