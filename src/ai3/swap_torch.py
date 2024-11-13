@@ -58,7 +58,7 @@ class Conv2D(nn.Module):
 
 
 
-# TODO easy cuDNN support https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
+# TODO easy cuDNN support for SDP attention https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
 class MHA(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
         super(MHA, self).__init__()
@@ -70,6 +70,8 @@ class MHA(nn.Module):
         self.head_dim = orig.head_dim
         self.kdim = orig.kdim
         self.vdim = orig.vdim
+
+        self.add_zero_attn = orig.add_zero_attn
 
         if self.embed_dim == self.kdim and self.embed_dim == self.vdim:
             self.q_proj_weight = orig.in_proj_weight[:self.embed_dim, :]
@@ -93,8 +95,17 @@ class MHA(nn.Module):
         self.out_proj_bias = orig.out_proj.bias
 
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, need_weights=True):
-        errors.bail_if(need_weights, 'no support for attention weights yet')
+    # TODO see what NAT implemented and if it is compatible with this SDP Attention then
+    # maybe just call it after all this processing, but the gains would be big if
+    # all of this is done it C++
+    # TODO implement, transpose, repeat, cat, linear for larger inputs
+    def forward(self, query, key, value, key_padding_mask=None, need_weights=True,
+                attn_mask=None, average_attn_weights=True, is_causal=False):
+        errors.bail_if(need_weights, 'no support for attention weights')
+        errors.bail_if(need_weights and average_attn_weights, 'no support for average attention weights')
+        errors.bail_if(key_padding_mask, 'no support for key padding mask')
+        errors.bail_if(attn_mask, 'no support for attention mask')
+        errors.bail_if(is_causal, 'no support for causal')
 
         batched = query.dim() == 3
         if not batched:
@@ -119,12 +130,18 @@ class MHA(nn.Module):
 
         src_len = k.shape[1]
 
-        q = q.view(batch_size, tgt_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        k = k.view(batch_size, src_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        v = v.view(batch_size, src_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        q = q.view(batch_size, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, src_len, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, src_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        if self.add_zero_attn:
+            zero_attn_shape = (batch_size, self.num_heads, 1, self.head_dim)
+            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=2)
+            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=2)
+
 
         attn_output = F.scaled_dot_product_attention(q, k, v)
-        attn_output = attn_output.permute(0, 2, 1, 3).view(batch_size * tgt_len, embed_dim)
+        attn_output = attn_output.transpose(1, 2).view(batch_size * tgt_len, embed_dim)
 
         attn_output = F.linear(attn_output, self.out_proj_weight, self.out_proj_bias)
         attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
