@@ -39,10 +39,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     endif()
 endif()
 
+if(NOT "$ENV{LIBRARY_PATH}" STREQUAL "")
+    string(REPLACE ":" ";" SYSTEM_LIBRARY_PATHS $ENV{LIBRARY_PATH})
+endif()
+
 find_package(CUDAToolkit)
 set(USE_CUBLAS NO)
 set(USE_CUDNN NO)
 if(CUDAToolkit_FOUND)
+    message(WARNING "Found Toolkit")
     list(APPEND TARGET_PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED TRUE
@@ -58,16 +63,19 @@ if(CUDAToolkit_FOUND)
         list(APPEND LIBRARIES CUDA::cublas)
     endif()
 
-    find_path(CUDNN_INCLUDE_DIR cudnn.h
-        HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-        PATH_SUFFIXES cuda/include cuda include)
     find_library(CUDNN_LIBRARY cudnn
-        PATHS ${CUDA_TOOLKIT_ROOT_DIR}
+        PATHS ${SYSTEM_LIBRARY_PATHS}
         PATH_SUFFIXES lib lib64 cuda/lib cuda/lib64 lib/x64)
-    if(CUDNN_INCLUDE_DIR AND CUDNN_LIBRARY)
-        set(USE_CUDNN YES)
-        message(STATUS "Found cuDNN")
-        list(APPEND LIBRARIES cudnn)
+    if(CUDNN_LIBRARY)
+        get_filename_component(CUDNN_LIBRARY_DIR ${CUDNN_LIBRARY} DIRECTORY)
+        find_path(CUDNN_INCLUDE_DIR cudnn.h
+            PATHS ${CUDNN_LIBRARY_DIR}/../include ${CUDNN_LIBRARY_DIR}/include
+            PATH_SUFFIXES include cuda/include)
+        if(CUDNN_INCLUDE_DIR)
+            set(USE_CUDNN YES)
+            message(STATUS "Found cuDNN")
+            list(APPEND LIBRARIES cudnn)
+        endif()
     endif()
 endif()
 

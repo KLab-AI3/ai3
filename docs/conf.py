@@ -84,7 +84,8 @@ extensions = [
 
 master_file = 'index'
 
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'intro.rst', 'performance.rst']
+exclude_patterns = ['_build', 'Thumbs.db',
+                    '.DS_Store', 'intro.rst', 'performance.rst']
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
 html_css_files = [

@@ -23,11 +23,15 @@ Framework Overview [#f1]_
 
 Installation
 """"""""""""
-**Built-In Implementations**
+**From Distribution**
   1. Wheel: *pip install* |pkg_name|
-  2. From Source (improves acceleration platform finding): *pip install* |pkg_name| *--no-binary :all:*
+  2. Source Distribution (improves library detection): *pip install* |pkg_name| *--no-binary :all:*
 
-**Custom Implementations**
+**From Source**
+  1. Download the source code
+  2. ``pip install <path to source code>``
+
+**With Custom Implementations**
   1. Download the source code
   2. Create an implementation with the operations defined in |custom|_
   3. If needed, configure the build process with |custom_cmake|_

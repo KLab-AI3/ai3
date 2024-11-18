@@ -2,6 +2,7 @@ import torch
 import torchvision
 import ai3
 
+
 def conv2d_selector(orig, input_shape) -> str:
     out_channels = orig.weight.shape[0]
     if (out_channels < 50 and
@@ -10,6 +11,7 @@ def conv2d_selector(orig, input_shape) -> str:
             input_shape[2] > 150):
         return 'direct'
     return 'smm'
+
 
 input_shape = (1, 3, 224, 224)
 input_data = torch.randn(input_shape)
@@ -23,7 +25,8 @@ with torch.inference_mode():
                 'maxpool2d': 'default'},
         input_shape)
     sb_out = model(input_data)
-    ai3.swap_operation(torch.nn.Conv2d, vgg16, ['direct', 'smm'] * 8, input_shape)
+    ai3.swap_operation(torch.nn.Conv2d, vgg16, [
+                       'direct', 'smm'] * 8, input_shape)
     sc_out = vgg16(input_data)
     assert torch.allclose(
         orig_out, sb_out, atol=1e-4)

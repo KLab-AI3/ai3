@@ -34,12 +34,14 @@ def clean_rst_prolog():
 
     return rst_prolog
 
+
 def fix_paths(contents):
     return re.sub(
         r'_static/(\S+)',
         lambda match: f"{GITHUB_RAW}/docs/_static/{match.group(1)}",
         contents
     )
+
 
 if __name__ == '__main__':
     with open(os.path.join('docs', 'intro.rst'), 'r') as file:
