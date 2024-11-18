@@ -57,7 +57,6 @@ class Conv2D(nn.Module):
             self.groups, self.algorithm)
 
 
-
 # TODO easy cuDNN support for SDP attention https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
 class MHA(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
@@ -94,15 +93,17 @@ class MHA(nn.Module):
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
 
-
     # TODO see what NAT implemented and if it is compatible with this SDP Attention then
     # maybe just call it after all this processing, but the gains would be big if
     # all of this is done it C++
     # TODO implement, transpose, repeat, cat, linear for larger inputs
-    def forward(self, query, key, value, key_padding_mask=None, need_weights=True,
-                attn_mask=None, average_attn_weights=True, is_causal=False):
+    # TODO when doing attn_mask alter values to 0, -inf like they are doing
+    def forward(self, query, key, value, key_padding_mask=None,
+                need_weights=True, attn_mask=None, average_attn_weights=True,
+                is_causal=False):
         errors.bail_if(need_weights, 'no support for attention weights')
-        errors.bail_if(need_weights and average_attn_weights, 'no support for average attention weights')
+        errors.bail_if(need_weights and average_attn_weights,
+                       'no support for average attention weights')
         errors.bail_if(key_padding_mask, 'no support for key padding mask')
         errors.bail_if(attn_mask, 'no support for attention mask')
         errors.bail_if(is_causal, 'no support for causal')
@@ -119,7 +120,6 @@ class MHA(nn.Module):
 
         batch_size, tgt_len, embed_dim = query.shape
 
-
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
@@ -130,19 +130,20 @@ class MHA(nn.Module):
 
         src_len = k.shape[1]
 
-        q = q.view(batch_size, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
-        k = k.view(batch_size, src_len, self.num_heads, self.head_dim).transpose(1, 2)
-        v = v.view(batch_size, src_len, self.num_heads, self.head_dim).transpose(1, 2)
+        q = q.view(batch_size, tgt_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, src_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, src_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
 
         if self.add_zero_attn:
             zero_attn_shape = (batch_size, self.num_heads, 1, self.head_dim)
             k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=2)
             v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=2)
 
-
         attn_output = F.scaled_dot_product_attention(q, k, v)
         attn_output = attn_output.transpose(1, 2).view(batch_size * tgt_len, embed_dim)
-
         attn_output = F.linear(attn_output, self.out_proj_weight, self.out_proj_bias)
         attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
         if not batched:
@@ -151,7 +152,6 @@ class MHA(nn.Module):
             attn_output = attn_output.transpose(0, 1)
 
         return attn_output, None
-
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],

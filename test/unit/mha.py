@@ -5,11 +5,14 @@ from test import compare_tensors
 
 
 class MHA(nn.Module):
-    def __init__(self, embed_dim, num_heads, kdim, vdim, bias, add_bias_kv, batch_first, add_zero_attn):
+    def __init__(
+            self, embed_dim, num_heads, kdim, vdim, bias, add_bias_kv,
+            batch_first, add_zero_attn):
         super(MHA, self).__init__()
-        self.attn = nn.MultiheadAttention(embed_dim, num_heads, kdim=kdim, vdim=vdim,
-                                          bias=bias, add_bias_kv=add_bias_kv, batch_first=batch_first,
-                                          add_zero_attn=add_zero_attn)
+        self.attn = nn.MultiheadAttention(
+            embed_dim, num_heads, kdim=kdim, vdim=vdim, bias=bias,
+            add_bias_kv=add_bias_kv, batch_first=batch_first,
+            add_zero_attn=add_zero_attn)
 
     def forward(self, q, k, v):
         attn_output, _ = self.attn(q, k, v, need_weights=False)
@@ -17,8 +20,8 @@ class MHA(nn.Module):
 
 
 def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
-         kdim = None, vdim = None ,
-         bias: bool = False, add_bias_kv = False, batch_first = None,
+         kdim=None, vdim=None,
+         bias: bool = False, add_bias_kv=False, batch_first=None,
          add_zero_attn: bool = False, test_name: str) -> None:
     kdim = kdim or embed_dim
     vdim = vdim or embed_dim
@@ -39,7 +42,8 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
         value = torch.randn(
             (seq_len, vdim), dtype=torch.float32)
 
-    orig = MHA(embed_dim, num_heads, kdim, vdim, bias, add_bias_kv, batch_first, add_zero_attn)
+    orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
+               add_bias_kv, batch_first, add_zero_attn)
     torch_output = orig(input, key, value)
 
     ai3.swap_mha(orig)
@@ -48,7 +52,6 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
         ai3_output, torch_output, test_name, print_diff=False)
 
 
-# TODO check other hparams
 print('MHA')
 test(num_samples=None,
      seq_len=10,
@@ -101,4 +104,3 @@ test(num_samples=3,
      add_bias_kv=True,
      add_zero_attn=True,
      test_name='batched, unique, bias, add_bias_kv, add_zero_attn')
-
