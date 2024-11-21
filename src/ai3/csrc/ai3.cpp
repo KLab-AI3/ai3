@@ -386,6 +386,123 @@ Tensor conv2d_with_algo(
         Tensor::form_tensor(input_address, input_shape, input_type));
 }
 
+// TODO make this integrate with the Layer base class
+class MultiheadAttention {
+  public:
+    MultiheadAttention(const intptr_t q_proj_address,
+                       const intptr_t k_proj_address,
+                       const intptr_t v_proj_address,
+                       const std::optional<intptr_t> q_bias_in_address,
+                       const std::optional<intptr_t> k_bias_in_address,
+                       const std::optional<intptr_t> v_bias_in_address,
+                       const std::optional<intptr_t> k_bias_address,
+                       const std::optional<intptr_t> v_bias_address,
+                       const intptr_t out_proj_address,
+                       const std::optional<intptr_t> out_proj_bias_address,
+                       const uint num_heads, const uint head_dim,
+                       const uint k_dim, const uint v_dim, const uint embed_dim,
+                       const std::string algorithm,
+                       const ScalarType scalar_type, bool own_params = true)
+        : q_proj(
+              own_params
+                  ? Tensor(q_proj_address, {embed_dim, embed_dim}, scalar_type)
+                  : Tensor::form_tensor(q_proj_address, {embed_dim, embed_dim},
+                                        scalar_type)),
+          k_proj(own_params
+                     ? Tensor(k_proj_address, {embed_dim, k_dim}, scalar_type)
+                     : Tensor::form_tensor(k_proj_address, {embed_dim, k_dim},
+                                           scalar_type)),
+          v_proj(own_params
+                     ? Tensor(v_proj_address, {embed_dim, v_dim}, scalar_type)
+                     : Tensor::form_tensor(v_proj_address, {embed_dim, v_dim},
+                                           scalar_type)),
+          q_bias_in(Tensor::from_optional(q_bias_in_address, {embed_dim},
+                                          scalar_type, own_params)),
+          k_bias_in(Tensor::from_optional(k_bias_in_address, {embed_dim},
+                                          scalar_type, own_params)),
+          v_bias_in(Tensor::from_optional(v_bias_in_address, {embed_dim},
+                                          scalar_type, own_params)),
+          k_bias(Tensor::from_optional(k_bias_address, {1, 1, embed_dim},
+                                       scalar_type, own_params)),
+          v_bias(Tensor::from_optional(v_bias_address, {1, 1, embed_dim},
+                                       scalar_type, own_params)),
+          out_proj(own_params ? Tensor(out_proj_address, {embed_dim, embed_dim},
+                                       scalar_type)
+                              : Tensor::form_tensor(out_proj_address,
+                                                    {embed_dim, embed_dim},
+                                                    scalar_type)),
+          out_bias(Tensor::from_optional(out_proj_bias_address, {embed_dim},
+                                         scalar_type, own_params)),
+          num_heads(num_heads), head_dim(head_dim), k_dim(k_dim), v_dim(v_dim),
+          embed_dim(embed_dim), algorithm(algorithm) {}
+
+    template <typename dtype>
+    Tensor forward(Tensor query, Tensor key, Tensor value) {
+        errs::invalid_algo("MultiheadAttention", algorithm);
+    }
+
+    ~MultiheadAttention() = default;
+
+  private:
+    const Tensor q_proj;
+    const Tensor k_proj;
+    const Tensor v_proj;
+    const std::optional<const Tensor> q_bias_in;
+    const std::optional<const Tensor> k_bias_in;
+    const std::optional<const Tensor> v_bias_in;
+    const std::optional<const Tensor> k_bias;
+    const std::optional<const Tensor> v_bias;
+    const Tensor out_proj;
+    const std::optional<const Tensor> out_bias;
+    const std::optional<const Tensor> key_padding_mask;
+    const std::optional<const Tensor> attn_mask;
+    const uint num_heads;
+    const uint head_dim;
+    const uint k_dim;
+    const uint v_dim;
+    const uint embed_dim;
+    const std::string algorithm;
+};
+
+// TODO when doing the weights will have to make this maybe return two things
+Tensor
+mha_with_algo(const intptr_t q_address, const intptr_t k_address,
+              const intptr_t v_address, const ScalarType input_type,
+              const std::vector<uint> q_shape, const std::vector<uint> k_shape,
+              const std::vector<uint> v_shape, const intptr_t q_proj_address,
+              const intptr_t k_proj_address, const intptr_t v_proj_address,
+              const std::optional<intptr_t> q_bias_in_address,
+              const std::optional<intptr_t> k_bias_in_address,
+              const std::optional<intptr_t> v_bias_in_address,
+              const std::optional<intptr_t> k_bias_address,
+              const std::optional<intptr_t> v_bias_address,
+              const intptr_t out_proj_address,
+              const std::optional<intptr_t> out_proj_bias_address,
+              const uint num_heads, const uint head_dim, const uint k_dim,
+              const uint v_dim, const uint embed_dim,
+              const std::optional<intptr_t> attn_mask_address,
+              const std::optional<intptr_t> key_padding_mask_address,
+              const bool need_weights, const bool average_attn_weights,
+              const bool is_causal, const std::string algorithm) {
+    MultiheadAttention layer(
+        q_proj_address, k_proj_address, v_proj_address, q_bias_in_address,
+        k_bias_in_address, v_bias_in_address, k_bias_address, v_bias_address,
+        out_proj_address, out_proj_bias_address, num_heads, head_dim, k_dim,
+        v_dim, embed_dim, algorithm, input_type, false);
+
+    // TODO deal with the masks find correct shape and pass to forward
+    if (input_type == ScalarType::Float32) {
+        return layer.forward<float>(
+            Tensor::form_tensor(q_address, q_shape, input_type),
+            Tensor::form_tensor(k_address, k_shape, input_type),
+            Tensor::form_tensor(v_address, v_shape, input_type));
+    }
+    return layer.forward<double>(
+        Tensor::form_tensor(q_address, q_shape, input_type),
+        Tensor::form_tensor(k_address, k_shape, input_type),
+        Tensor::form_tensor(v_address, v_shape, input_type));
+}
+
 class Model {
   public:
     Model(const std::vector<std::shared_ptr<Layer>> layers) : layers(layers) {}
@@ -437,6 +554,7 @@ PYBIND11_MODULE(_core, m) {
                       const ScalarType>());
 
     m.def("conv2d", &conv2d_with_algo);
+    m.def("mha", &mha_with_algo);
 
     py::class_<Linear, Layer, std::shared_ptr<Linear>>(m, "Linear")
         .def(py::init<const intptr_t, const std::vector<uint>,
@@ -477,7 +595,7 @@ PYBIND11_MODULE(_core, m) {
     m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
 
     static_assert(sizeof(float) == 4,
-                  "expected 'float' to be 4 bytes (float32)");
+                  "expected `float` to be 4 bytes (float32)");
     static_assert(sizeof(double) == 8,
-                  "expected 'double' to be 8 bytes (float64)");
+                  "expected `double` to be 8 bytes (float64)");
 }

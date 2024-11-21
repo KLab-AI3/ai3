@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+from torch.functional import Tensor
 from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
@@ -58,9 +59,12 @@ class Conv2D(nn.Module):
 
 
 # TODO easy cuDNN support for SDP attention https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
-class MHA(nn.Module):
+# Actual function https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-adv-library.html#cudnnmultiheadattnforward
+# - Doesn't look like this supports the linear things I have happening here
+# TODO has a weights function https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-adv-library.html#cudnngetmultiheadattnweights
+class MultiheadAttention(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
-        super(MHA, self).__init__()
+        super(MultiheadAttention, self).__init__()
         self.orig = orig
         self.algorithm = algorithm
         self.batch_first = orig.batch_first
@@ -76,19 +80,18 @@ class MHA(nn.Module):
             self.q_proj_weight = orig.in_proj_weight[:self.embed_dim, :]
             self.k_proj_weight = orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :]
             self.v_proj_weight = orig.in_proj_weight[2*self.embed_dim:, :]
-            self.bias_q = self.bias_k = self.bias_v = None
-            if orig.in_proj_bias is not None:
-                self.bias_q_in = orig.in_proj_bias[:self.embed_dim]
-                self.bias_k_in= orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
-                self.bias_v_in = orig.in_proj_bias[2*self.embed_dim:]
-            else:
-                self.bias_q_in = self.bias_k_in = self.bias_v_in = None
         else:
             self.q_proj_weight = orig.q_proj_weight
             self.k_proj_weight = orig.k_proj_weight
             self.v_proj_weight = orig.v_proj_weight
-            self.bias_q, self.bias_k, self.bias_v = None, orig.bias_k, orig.bias_v
+
+        if orig.in_proj_bias is not None:
+            self.bias_q_in = orig.in_proj_bias[:self.embed_dim]
+            self.bias_k_in = orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
+            self.bias_v_in = orig.in_proj_bias[2*self.embed_dim:]
+        else:
             self.bias_q_in = self.bias_k_in = self.bias_v_in = None
+        self.bias_q, self.bias_k, self.bias_v = None, orig.bias_k, orig.bias_v
 
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
@@ -101,6 +104,12 @@ class MHA(nn.Module):
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
                 is_causal=False):
+        assert (callable(ops.ai3.mha))
+        return ops.ai3.mha(query, key, value, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
+                           self.bias_q_in, self.bias_k_in, self.bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                           self.out_proj_bias, self.num_heads, self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                           key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal, self.algorithm)
+
         errors.bail_if(need_weights, 'no support for attention weights')
         errors.bail_if(need_weights and average_attn_weights,
                        'no support for average attention weights')
@@ -119,6 +128,14 @@ class MHA(nn.Module):
             value = value.transpose(0, 1)
 
         batch_size, tgt_len, embed_dim = query.shape
+
+        print(self.q_proj_weight.shape)
+        print(self.k_proj_weight.shape)
+        print(self.v_proj_weight.shape)
+        if self.bias_q_in is not None and self.bias_k_in is not None and self.bias_v_in is not None:
+            print(self.bias_q_in.shape)
+            print(self.bias_k_in.shape)
+            print(self.bias_v_in.shape)
 
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
@@ -143,8 +160,11 @@ class MHA(nn.Module):
             v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=2)
 
         attn_output = F.scaled_dot_product_attention(q, k, v)
-        attn_output = attn_output.transpose(1, 2).view(batch_size * tgt_len, embed_dim)
-        attn_output = F.linear(attn_output, self.out_proj_weight, self.out_proj_bias)
+        attn_output = attn_output.transpose(
+            1, 2).view(
+            batch_size * tgt_len, embed_dim)
+        attn_output = F.linear(
+            attn_output, self.out_proj_weight, self.out_proj_bias)
         attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
         if not batched:
             attn_output = attn_output.squeeze(0)
@@ -152,6 +172,7 @@ class MHA(nn.Module):
             attn_output = attn_output.transpose(0, 1)
 
         return attn_output, None
+
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],
@@ -323,6 +344,51 @@ torch.library.register_fake(
 torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
+# TODO setup training
+
+
+def mha(
+        query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+        q_proj: torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor,
+        q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
+        v_proj_bias: torch.Tensor, k_bias: torch.Tensor, v_bias: torch.Tensor,
+        out_proj: torch.Tensor, out_proj_bias: torch.Tensor, num_heads: int,
+        head_dim: int, k_dim: int, v_dim: int, embed_dim: int,
+        key_padding_mask: torch.Tensor, need_weights: bool,
+        attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
+        algorithm: str) -> torch.Tensor:
+    q_ptr = query.data_ptr()
+    k_ptr = key.data_ptr()
+    v_ptr = value.data_ptr()
+    q_proj_ptr = q_proj.data_ptr()
+    k_proj_ptr = k_proj.data_ptr()
+    v_proj_ptr = v_proj.data_ptr()
+    q_bias_proj_ptr = None if q_proj_bias is None else q_proj_bias.data_ptr()
+    k_bias_proj_ptr = None if k_proj_bias is None else k_proj_bias.data_ptr()
+    v_bias_proj_ptr = None if v_proj_bias is None else v_proj_bias.data_ptr()
+    k_bias_ptr = None if k_bias is None else k_bias.data_ptr()
+    v_bias_ptr = None if v_bias is None else v_bias.data_ptr()
+    out_proj_ptr = out_proj.data_ptr()
+    out_bias_proj_ptr = None if out_proj_bias is None else out_proj_bias.data_ptr()
+    attn_mask_ptr = None if attn_mask is None else attn_mask.data_ptr()
+    key_padding_mask_ptr = None if key_padding_mask is None else key_padding_mask.data_ptr()
+
+    out = _core.mha(
+        q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+        query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
+        v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
+        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, num_heads,
+        head_dim, k_dim, v_dim, embed_dim, attn_mask_ptr, key_padding_mask_ptr,
+        need_weights, average_attn_weights, is_causal, algorithm)
+    buffer = torch.frombuffer(
+        out, dtype=query.dtype).view(
+        out.shape)
+    return buffer
+
+
+torch.library.custom_op(
+    'ai3::mha', mha, mutates_args=())
+
 
 def get_algo_inc_counter(orig: Union[nn.Module, str],
                          algo_selector: utils.AlgorithmicSelector,
@@ -434,7 +500,7 @@ def convert_layers(complete_module: nn.Module, dtype,
 
 class Tracer(fx.Tracer):
     def is_leaf_module(self, m, module_qualified_name):
-        if isinstance(m, (Conv2D, MHA)):
+        if isinstance(m, (Conv2D, MultiheadAttention)):
             return True
         return super().is_leaf_module(m, module_qualified_name)
 
@@ -447,7 +513,7 @@ def swapped_type(op_type) -> Optional[Type]:
     if op_type == nn.Conv2d:
         return Conv2D
     if op_type == nn.MultiheadAttention:
-        return MHA
+        return MultiheadAttention
     return None
 
 

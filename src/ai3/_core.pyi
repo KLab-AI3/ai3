@@ -49,6 +49,31 @@ def conv2d(input_address: int, input_shape: Sequence[int], input_type: ScalarTyp
                  int, groups: int, algorithm: str) -> Tensor:
     ...
 
+# TODO make optional make sure cpp has the v_bias_in
+def mha(q_address: int, k_address: int,
+        v_address: int, input_type: ScalarType,
+        q_shape: Sequence[int],
+        k_shape: Sequence[int],
+        v_shape: Sequence[int],
+        q_proj_address: int,
+        k_proj_address: int,
+        v_proj_address: int,
+        q_bias_in_address: Optional[int],
+        k_bias_in_address: Optional[int],
+        v_bias_in_address: Optional[int],
+        k_bias_address: Optional[int],
+        v_bias_address: Optional[int],
+        out_proj_address: int,
+        out_proj_bias_address: Optional[int],
+        num_heads: int, head_dim: int,
+        k_dim: int, v_dim: int, embed_dim: int,
+        attn_mask_address: Optional[int],
+        key_padding_mask_address: Optional[int],
+        need_weights: bool,
+        average_attn_weights: bool, is_causal: bool,
+        algorithm: str) -> Tensor:
+    ...
+
 class Conv2D():
     def __init__(self,
                  weight_address: int,

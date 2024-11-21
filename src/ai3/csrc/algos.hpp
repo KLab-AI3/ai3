@@ -65,10 +65,20 @@ namespace relu {
 template <typename dtype> Tensor direct(RELU_PARAMS);
 }
 
-#define FLATTEN_PARAMS Tensor input, const uint, int
+#define FLATTEN_PARAMS Tensor, const uint, int
 
 namespace flatten {
 template <typename dtype> Tensor direct(FLATTEN_PARAMS);
+}
+
+#define MHATTN_PARAMS                                                          \
+    Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,    \
+        Tensor, Tensor, Tensor, Tensor, const uint, const uint,                \
+        std::optional<Tensor>, std::optional<Tensor>, const bool, const bool,  \
+        const bool
+
+namespace mha {
+template <typename dtype> Tensor direct(MHATTN_PARAMS);
 }
 
 #if defined USE_CUBLAS

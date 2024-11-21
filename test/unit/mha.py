@@ -27,7 +27,7 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
     vdim = vdim or embed_dim
     assert kdim and vdim
     if num_samples:
-        input = torch.randn(
+        query = torch.randn(
             (num_samples, seq_len, embed_dim), dtype=torch.float32)
         key = torch.randn(
             (num_samples, seq_len, kdim), dtype=torch.float32)
@@ -35,7 +35,7 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
             (num_samples, seq_len, vdim), dtype=torch.float32)
 
     else:
-        input = torch.randn(
+        query = torch.randn(
             seq_len, embed_dim, dtype=torch.float32)
         key = torch.randn(
             (seq_len, kdim), dtype=torch.float32)
@@ -44,10 +44,10 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
 
     orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
                add_bias_kv, batch_first, add_zero_attn)
-    torch_output = orig(input, key, value)
+    torch_output = orig(query, key, value)
 
     ai3.swap_mha(orig)
-    ai3_output = orig(input, key, value)
+    ai3_output = orig(query, key, value)
     compare_tensors(
         ai3_output, torch_output, test_name, print_diff=False)
 
@@ -100,7 +100,24 @@ test(num_samples=3,
      num_heads=4,
      kdim=20,
      vdim=16,
-     bias=False,
+     bias=True,
      add_bias_kv=True,
      add_zero_attn=True,
      test_name='batched, unique, bias, add_bias_kv, add_zero_attn')
+test(num_samples=None,
+     seq_len=40,
+     embed_dim=48,
+     num_heads=4,
+     bias=False,
+     add_bias_kv=True,
+     add_zero_attn=False,
+     test_name='not unique, add_bias_kv')
+test(num_samples=3,
+     seq_len=40,
+     embed_dim=48,
+     num_heads=4,
+     kdim=20,
+     vdim=16,
+     bias=True,
+     add_bias_kv=False,
+     test_name='unique, with bias')
