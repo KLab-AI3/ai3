@@ -151,6 +151,7 @@ use_supported_platform_impls("adaptiveavgpool2d")
 use_supported_platform_impls("maxpool2d")
 use_supported_platform_impls("relu")
 use_supported_platform_impls("flatten")
+use_supported_platform_impls("mhattn")
 
 pybind11_add_module(_core MODULE ${CSRC_FILES})
 set_target_properties(_core PROPERTIES

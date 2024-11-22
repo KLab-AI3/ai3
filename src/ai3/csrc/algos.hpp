@@ -72,14 +72,20 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
 }
 
 #define MHATTN_PARAMS                                                          \
-    Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,    \
-        Tensor, Tensor, Tensor, Tensor, const uint, const uint,                \
-        std::optional<Tensor>, std::optional<Tensor>, const bool, const bool,  \
-        const bool
+    Tensor, Tensor, Tensor, const Tensor &, const Tensor &, const Tensor &,    \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &, const Tensor &,                   \
+        const std::optional<const Tensor> &, const uint, const uint,           \
+        std::optional<Tensor> &, std::optional<Tensor> &, const bool,          \
+        const bool, const bool
 
 namespace mha {
-template <typename dtype> Tensor direct(MHATTN_PARAMS);
-}
+template <typename dtype> Tensor standard(MHATTN_PARAMS);
+
+} // namespace mha
 
 #if defined USE_CUBLAS
 const bool USING_CUBLAS = true;

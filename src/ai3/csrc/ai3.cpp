@@ -437,7 +437,18 @@ class MultiheadAttention {
           embed_dim(embed_dim), algorithm(algorithm) {}
 
     template <typename dtype>
-    Tensor forward(Tensor query, Tensor key, Tensor value) {
+    Tensor forward(Tensor query, Tensor key, Tensor value,
+                   std::optional<Tensor> attn_mask,
+                   std::optional<Tensor> key_padding_mask,
+                   const bool need_weights, const bool average_attn_weights,
+                   const bool is_causal) {
+        if (algorithm == "default") {
+            return mha::standard<dtype>(
+                std::move(query), std::move(key), std::move(value), q_proj,
+                k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
+                out_proj, out_bias, num_heads, head_dim, key_padding_mask,
+                attn_mask, need_weights, average_attn_weights, is_causal);
+        }
         errs::invalid_algo("MultiheadAttention", algorithm);
     }
 
@@ -489,18 +500,38 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
         k_bias_in_address, v_bias_in_address, k_bias_address, v_bias_address,
         out_proj_address, out_proj_bias_address, num_heads, head_dim, k_dim,
         v_dim, embed_dim, algorithm, input_type, false);
+    std::optional<Tensor> attn_mask =
+        attn_mask_address
+            ? std::optional<Tensor>(Tensor::form_tensor(
+                  *attn_mask_address,
+                  {q_shape[q_shape.size() - 2], k_shape[k_shape.size() - 2]},
+                  input_type))
+            : std::nullopt;
+    std::optional<Tensor> key_padding_mask =
+        key_padding_mask_address
+            ? std::optional<Tensor>(Tensor::form_tensor(
+                  *key_padding_mask_address,
+                  k_shape.size() == 4
+                      ? std::vector<uint>{k_shape[0],
+                                          k_shape[k_shape.size() - 2]}
+                      : std::vector<uint>{k_shape[k_shape.size() - 2]},
+                  input_type))
+            : std::nullopt;
 
-    // TODO deal with the masks find correct shape and pass to forward
     if (input_type == ScalarType::Float32) {
         return layer.forward<float>(
             Tensor::form_tensor(q_address, q_shape, input_type),
             Tensor::form_tensor(k_address, k_shape, input_type),
-            Tensor::form_tensor(v_address, v_shape, input_type));
+            Tensor::form_tensor(v_address, v_shape, input_type),
+            std::move(attn_mask), std::move(key_padding_mask), need_weights,
+            average_attn_weights, is_causal);
     }
     return layer.forward<double>(
         Tensor::form_tensor(q_address, q_shape, input_type),
         Tensor::form_tensor(k_address, k_shape, input_type),
-        Tensor::form_tensor(v_address, v_shape, input_type));
+        Tensor::form_tensor(v_address, v_shape, input_type),
+        std::move(attn_mask), std::move(key_padding_mask), need_weights,
+        average_attn_weights, is_causal);
 }
 
 class Model {

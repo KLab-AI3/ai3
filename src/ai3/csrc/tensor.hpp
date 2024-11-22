@@ -99,12 +99,10 @@ class Tensor {
         if (data_address.has_value()) {
             if (own) {
                 return Tensor(*data_address, s, scalar_type);
-            } else {
-                return form_tensor(*data_address, s, scalar_type);
             }
-        } else {
-            return std::nullopt;
+            return form_tensor(*data_address, s, scalar_type);
         }
+        return std::nullopt;
     }
 
     /**

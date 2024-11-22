@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from torch.functional import Tensor
 from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
@@ -192,8 +191,7 @@ def str_to_op_type(op_type_str: str) -> Type:
         if isinstance(op_type, list):
             return op_type[0]
         return op_type
-    else:
-        errors.unsupported_mod(op_type_str)
+    errors.unsupported_mod(op_type_str)
 
 
 def op_type_to_str(op_type: Type) -> str:
@@ -479,7 +477,7 @@ def convert_layers(complete_module: nn.Module, dtype,
                     layer_counters, node_input_shape, swapping_backend=True)
                 layer = layers.ReLU(algo)
             else:
-                errors.unsupported_mod(node.target)
+                errors.cannot_convert(node.target)
         elif node.op == 'call_module':
             mod = getmodule(
                 complete_module, node.target)
@@ -577,4 +575,4 @@ def swap_layer(module: Union[nn.Module, layers.Layer],
         return layers.ReLU(algo)
     elif isinstance(module, nn.Flatten):
         return layers.Flatten(module.start_dim, module.end_dim, algo)
-    errors.unsupported_mod(module)
+    errors.cannot_convert(module)
