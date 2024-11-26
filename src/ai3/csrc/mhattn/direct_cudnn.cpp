@@ -2,6 +2,7 @@
 
 #include <ai3.hpp>
 #include <algos.hpp>
+#include <cudnn_frontend.h>
 
 template <typename dtype>
 Tensor mhattn::standard(
@@ -16,7 +17,9 @@ Tensor mhattn::standard(
     const uint head_dim, std::optional<Tensor> &key_padding_mask,
     std::optional<Tensor> &attn_mask, const bool need_weights,
     const bool average_attn_weights, const bool is_causal) {
-    errs::bail("mhattn not implemented outside of cuDNN");
+    ensure_same_type(query, key, value);
+
+    cudnnHandle_t handle = (cudnnHandle_t)Context::cudnn_handle_t();
 }
 
 template Tensor mhattn::standard<float>(MHATTN_PARAMS);

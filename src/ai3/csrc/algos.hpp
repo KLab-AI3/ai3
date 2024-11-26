@@ -10,6 +10,7 @@
 #include "../custom/flatten.hpp"
 #include "../custom/linear.hpp"
 #include "../custom/maxpool2d.hpp"
+#include "../custom/mhattn.hpp"
 #include "../custom/relu.hpp"
 
 #define CONV2D_PARAMS                                                          \
@@ -82,10 +83,10 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
         std::optional<Tensor> &, std::optional<Tensor> &, const bool,          \
         const bool, const bool
 
-namespace mha {
+namespace mhattn {
 template <typename dtype> Tensor standard(MHATTN_PARAMS);
 
-} // namespace mha
+} // namespace mhattn
 
 #if defined USE_CUBLAS
 const bool USING_CUBLAS = true;

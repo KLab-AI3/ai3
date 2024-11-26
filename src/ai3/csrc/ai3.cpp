@@ -442,8 +442,24 @@ class MultiheadAttention {
                    std::optional<Tensor> key_padding_mask,
                    const bool need_weights, const bool average_attn_weights,
                    const bool is_causal) {
-        if (algorithm == "default") {
-            return mha::standard<dtype>(
+        if (is_default(algorithm)) {
+            if constexpr (DEFAULT_MHATTN) {
+                return mhattn_custom<dtype>(
+                    std::move(query), std::move(key), std::move(value), q_proj,
+                    k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias,
+                    v_bias, out_proj, out_bias, num_heads, head_dim,
+                    key_padding_mask, attn_mask, need_weights,
+                    average_attn_weights, is_causal);
+            } else {
+                return mhattn::standard<dtype>(
+                    std::move(query), std::move(key), std::move(value), q_proj,
+                    k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias,
+                    v_bias, out_proj, out_bias, num_heads, head_dim,
+                    key_padding_mask, attn_mask, need_weights,
+                    average_attn_weights, is_causal);
+            }
+        } else if (is_custom(algorithm)) {
+            return mhattn_custom<dtype>(
                 std::move(query), std::move(key), std::move(value), q_proj,
                 k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
                 out_proj, out_bias, num_heads, head_dim, key_padding_mask,
@@ -475,7 +491,8 @@ class MultiheadAttention {
     const std::string algorithm;
 };
 
-// TODO when doing the weights will have to make this maybe return two things
+// TODO when doing the weights will have to make this maybe return two
+// things
 Tensor
 mha_with_algo(const intptr_t q_address, const intptr_t k_address,
               const intptr_t v_address, const ScalarType input_type,
