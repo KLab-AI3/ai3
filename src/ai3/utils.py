@@ -35,8 +35,10 @@ SUPPORTED_ALGORITHMS = {
     'flatten': ['direct'],
 }
 DEFAULT_OPTION = _core.default_opt_str()
+CUSTOM_OPTION = _core.custom_opt_str()
 for key in SUPPORTED_ALGORITHMS:
     SUPPORTED_ALGORITHMS[key].append(DEFAULT_OPTION)
+    SUPPORTED_ALGORITHMS[key].append(CUSTOM_OPTION)
 
 
 def check_callable_params_with_shape(

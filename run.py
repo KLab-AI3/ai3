@@ -23,16 +23,19 @@ Whether to automatically generate :data:`CONV2D_ALGOS_TO_USE` to contain all
 possible algorithms
 """
 if USE_ALL_POSSIBLE_CONV:
-    import ai3
     assert len(CONV2D_ALGOS_TO_USE) == 0
     CONV2D_ALGOS_TO_USE.extend(['direct', 'smm'])
-    if ai3.using_mps_and_metal():
-        CONV2D_ALGOS_TO_USE.append('mps')
-        CONV2D_ALGOS_TO_USE.append('metal')
-    if ai3.using_cudnn():
-        CONV2D_ALGOS_TO_USE.extend(['gemm',
-                                    'implicit gemm', 'implicit precomp gemm',
-                                    'guess'])
+    try:
+        import ai3
+        if ai3.using_mps_and_metal():
+            CONV2D_ALGOS_TO_USE.append('mps')
+            CONV2D_ALGOS_TO_USE.append('metal')
+        if ai3.using_cudnn():
+            CONV2D_ALGOS_TO_USE.extend(['gemm',
+                                        'implicit gemm', 'implicit precomp gemm',
+                                        'guess'])
+    except ImportError:
+        pass
 
 
 def run_command(command, cwd=None):

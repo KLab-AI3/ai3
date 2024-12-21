@@ -6,9 +6,10 @@
 #include <pybind11/stl.h>
 
 const std::string DEFAULT_OPT_STR = "default";
+const std::string CUSTOM_OPT_STR = "custom";
 
 inline bool is_default(std::string algo) { return algo == DEFAULT_OPT_STR; }
-inline bool is_custom(std::string algo) { return algo == "custom"; }
+inline bool is_custom(std::string algo) { return algo == CUSTOM_OPT_STR; }
 
 class Layer {
   public:
@@ -641,6 +642,7 @@ PYBIND11_MODULE(_core, m) {
     m.def("using_cublas", [] { return USING_CUBLAS; });
     m.def("using_cudnn", [] { return USING_CUDNN; });
     m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
+    m.def("custom_opt_str", [] { return CUSTOM_OPT_STR; });
 
     static_assert(sizeof(float) == 4,
                   "expected `float` to be 4 bytes (float32)");
