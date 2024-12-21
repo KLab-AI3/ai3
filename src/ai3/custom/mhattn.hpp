@@ -5,7 +5,7 @@
 /**
  * @DEFAULT_BOOL{ReLU}
  */
-const bool DEFAULT_MHATTN = true;
+const bool DEFAULT_MHATTN = false;
 
 /**
  * @CUSTOM_OP{ReLU,relu}
