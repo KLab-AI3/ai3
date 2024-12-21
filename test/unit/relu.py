@@ -24,11 +24,15 @@ def test(*, input_shape,
         ai3_output, torch_output, test_name)
 
 
-print('RELU')
-test(input_shape=1,
-     test_name='one')
-test(input_shape=(1, 4, 56, 48),
-     test_name='normal')
-shape = (3, 1, 4, 5, 6, 8, 1, 1, 8, 4)
-test(input_shape=shape,
-     test_name=f'{len(shape)} dim')
+def main():
+    print('RELU')
+    test(input_shape=1,
+         test_name='one')
+    test(input_shape=(1, 4, 56, 48),
+         test_name='normal')
+    shape = (3, 1, 4, 5, 6, 8, 1, 1, 8, 4)
+    test(input_shape=shape,
+         test_name=f'{len(shape)} dim')
+
+if __name__ == '__main__':
+    main()

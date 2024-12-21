@@ -31,23 +31,27 @@ def test(*, in_shape,
         ai3_output, torch_output, test_name)
 
 
-print('FLATTEN')
-test(in_shape=(2, 2, 2), test_name='small basic')
-test(in_shape=(2, 2, 2), start_dim=1,
-     test_name='small from 1')
-test(in_shape=(2, 2, 2), start_dim=2,
-     test_name='small from 2')
-test(in_shape=(3, 7, 5), start_dim=0,
-     end_dim=1, test_name='small 0 to 1')
-test(in_shape=(3, 7, 9), start_dim=0,
-     end_dim=2, test_name='small 0 to 2')
-test(in_shape=(8, 6, 3), start_dim=1,
-     end_dim=2, test_name='small 1 to 2')
-test(in_shape=(8, 6, 3), start_dim=1,
-     end_dim=1, test_name='start = end')
-test(in_shape=(1, 2, 3, 4, 5), start_dim=2,
-     end_dim=4, test_name='5 dim 2 to 4')
-test(in_shape=(4, 7, 1, 4, 3, 2, 3,
-     7, 9, 1), test_name='10 dim')
-test(in_shape=(4, 7, 1, 4, 3, 2, 3, 7, 9, 1),
-     start_dim=5, end_dim=7, test_name='10 dim 5 to 7')
+def main():
+    print('FLATTEN')
+    test(in_shape=(2, 2, 2), test_name='small basic')
+    test(in_shape=(2, 2, 2), start_dim=1,
+         test_name='small from 1')
+    test(in_shape=(2, 2, 2), start_dim=2,
+         test_name='small from 2')
+    test(in_shape=(3, 7, 5), start_dim=0,
+         end_dim=1, test_name='small 0 to 1')
+    test(in_shape=(3, 7, 9), start_dim=0,
+         end_dim=2, test_name='small 0 to 2')
+    test(in_shape=(8, 6, 3), start_dim=1,
+         end_dim=2, test_name='small 1 to 2')
+    test(in_shape=(8, 6, 3), start_dim=1,
+         end_dim=1, test_name='start = end')
+    test(in_shape=(1, 2, 3, 4, 5), start_dim=2,
+         end_dim=4, test_name='5 dim 2 to 4')
+    test(in_shape=(4, 7, 1, 4, 3, 2, 3,
+         7, 9, 1), test_name='10 dim')
+    test(in_shape=(4, 7, 1, 4, 3, 2, 3, 7, 9, 1),
+         start_dim=5, end_dim=7, test_name='10 dim 5 to 7')
+
+if __name__ == '__main__':
+    main()

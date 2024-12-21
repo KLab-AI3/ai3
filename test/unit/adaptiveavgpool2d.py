@@ -32,33 +32,37 @@ def test(
         ai3_output, torch_output, test_name)
 
 
-print('ADAPTIVE AVG POOL 2D')
+def main():
+    print('ADAPTIVE AVG POOL 2D')
 
-test(input_channels=3,
-     in_height=30,
-     in_width=30,
-     output_shape=(6, 6),
-     test_name='out is multiple of in')
-test(num_samples=3,
-     input_channels=3,
-     in_height=40,
-     in_width=30,
-     output_shape=(4, 3),
-     test_name='separate multiples')
-test(input_channels=10,
-     in_height=15,
-     in_width=15,
-     output_shape=(None, 3),
-     test_name='first None')
-test(num_samples=5,
-     input_channels=10,
-     in_height=15,
-     in_width=15,
-     output_shape=(5, None),
-     test_name='second None')
-test(num_samples=10,
-     input_channels=10,
-     in_height=50,
-     in_width=50,
-     output_shape=(None, None),
-     test_name='both None')
+    test(input_channels=3,
+         in_height=30,
+         in_width=30,
+         output_shape=(6, 6),
+         test_name='out is multiple of in')
+    test(num_samples=3,
+         input_channels=3,
+         in_height=40,
+         in_width=30,
+         output_shape=(4, 3),
+         test_name='separate multiples')
+    test(input_channels=10,
+         in_height=15,
+         in_width=15,
+         output_shape=(None, 3),
+         test_name='first None')
+    test(num_samples=5,
+         input_channels=10,
+         in_height=15,
+         in_width=15,
+         output_shape=(5, None),
+         test_name='second None')
+    test(num_samples=10,
+         input_channels=10,
+         in_height=50,
+         in_width=50,
+         output_shape=(None, None),
+         test_name='both None')
+
+if __name__ == '__main__':
+    main()

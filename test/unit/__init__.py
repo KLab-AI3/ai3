@@ -29,4 +29,5 @@ def pooling_poss_output_size(
 
 def run():
     print('UNIT')
-    from . import conv2d, maxpool2d, linear, relu, avgpool2d, adaptiveavgpool2d, flatten
+    from . import conv2d, maxpool2d, linear, relu, avgpool2d, adaptiveavgpool2d, flatten, custom, mha
+    [m.main() for m in [conv2d, maxpool2d, linear, relu, avgpool2d, adaptiveavgpool2d, flatten, custom, mha]]
