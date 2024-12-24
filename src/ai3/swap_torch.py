@@ -103,12 +103,6 @@ class MultiheadAttention(nn.Module):
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
                 is_causal=False):
-        assert (callable(ops.ai3.mha))
-        return ops.ai3.mha(query, key, value, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
-                           self.bias_q_in, self.bias_k_in, self.bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                           self.out_proj_bias, self.num_heads, self.head_dim, self.kdim, self.vdim, self.embed_dim,
-                           key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal, self.algorithm)
-
         errors.bail_if(need_weights, 'no support for attention weights')
         errors.bail_if(need_weights and average_attn_weights,
                        'no support for average attention weights')
@@ -158,7 +152,14 @@ class MultiheadAttention(nn.Module):
             k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=2)
             v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=2)
 
-        attn_output = F.scaled_dot_product_attention(q, k, v)
+
+        # attn_output = F.scaled_dot_product_attention(q, k, v)
+        assert (callable(ops.ai3.mha))
+        attn_output = ops.ai3.mha(query, key, value, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
+                           self.bias_q_in, self.bias_k_in, self.bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                           self.out_proj_bias, self.num_heads, self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                           key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal, self.algorithm)
+
         attn_output = attn_output.transpose(
             1, 2).view(
             batch_size * tgt_len, embed_dim)
@@ -343,8 +344,6 @@ torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
 # TODO setup training
-
-
 def mha(
         query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         q_proj: torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor,
