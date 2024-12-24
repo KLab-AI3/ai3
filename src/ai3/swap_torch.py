@@ -57,10 +57,6 @@ class Conv2D(nn.Module):
             self.groups, self.algorithm)
 
 
-# TODO easy cuDNN support for SDP attention https://developer.nvidia.com/blog/accelerating-transformers-with-nvidia-cudnn-9/
-# Actual function https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-adv-library.html#cudnnmultiheadattnforward
-# - Doesn't look like this supports the linear things I have happening here
-# TODO has a weights function https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-adv-library.html#cudnngetmultiheadattnweights
 class MultiheadAttention(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
         super(MultiheadAttention, self).__init__()
@@ -122,14 +118,6 @@ class MultiheadAttention(nn.Module):
 
         batch_size, tgt_len, embed_dim = query.shape
 
-        print(self.q_proj_weight.shape)
-        print(self.k_proj_weight.shape)
-        print(self.v_proj_weight.shape)
-        if self.bias_q_in is not None and self.bias_k_in is not None and self.bias_v_in is not None:
-            print(self.bias_q_in.shape)
-            print(self.bias_k_in.shape)
-            print(self.bias_v_in.shape)
-
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
@@ -155,7 +143,7 @@ class MultiheadAttention(nn.Module):
 
         # attn_output = F.scaled_dot_product_attention(q, k, v)
         assert (callable(ops.ai3.mha))
-        attn_output = ops.ai3.mha(query, key, value, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
+        attn_output = ops.ai3.mha(q, k, v, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
                            self.bias_q_in, self.bias_k_in, self.bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
                            self.out_proj_bias, self.num_heads, self.head_dim, self.kdim, self.vdim, self.embed_dim,
                            key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal, self.algorithm)

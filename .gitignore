@@ -11,6 +11,7 @@ pages
 
 dist
 download_release.sh
+archive
 
 src/ai3/_version.py
 

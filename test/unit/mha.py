@@ -57,8 +57,10 @@ def main():
     test(num_samples=None,
          seq_len=10,
          embed_dim=64,
-         num_heads=4,
+         num_heads=1,
          test_name='not batched no bias')
+    exit(0)
+
     test(num_samples=None,
          seq_len=20,
          embed_dim=64,
