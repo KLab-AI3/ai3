@@ -1,7 +1,4 @@
 export CUDNN_LOGLEVEL_DBG=3
 export CUDNN_LOGDEST_DBG=log.txt
-nvcc -o attempt graph_attempt.cpp \
-         -I../cudnn-linux-x86_64-9.6.0.74_cuda12-archive/include \
-         -L../cudnn-linux-x86_64-9.6.0.74_cuda12-archive/lib \
-         -lcudnn
+nvcc -o attempt mha_adv_attempt.cpp -lcudnn
 ./attempt
