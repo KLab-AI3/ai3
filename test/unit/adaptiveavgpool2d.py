@@ -64,5 +64,6 @@ def main():
          output_shape=(None, None),
          test_name='both None')
 
+
 if __name__ == '__main__':
     main()

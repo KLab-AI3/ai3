@@ -27,7 +27,7 @@ requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
-cmake.build-type = "Debug" # TODO change back to release
+cmake.build-type = "Release"
 wheel.packages = ["src/ai3"]
 sdist.cmake = false
 cmake.define = {SKBUILD_PROJECT_NAME="ai3"}

@@ -196,5 +196,6 @@ def main():
         ceil_mode_note_height=False, ceil_mode_note_width=True,
         test_name='ceil mode with note for width, https://pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html')
 
+
 if __name__ == '__main__':
     main()

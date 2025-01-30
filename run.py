@@ -31,9 +31,8 @@ if USE_ALL_POSSIBLE_CONV:
             CONV2D_ALGOS_TO_USE.append('mps')
             CONV2D_ALGOS_TO_USE.append('metal')
         if ai3.using_cudnn():
-            CONV2D_ALGOS_TO_USE.extend(['gemm',
-                                        'implicit gemm', 'implicit precomp gemm',
-                                        'guess'])
+            CONV2D_ALGOS_TO_USE.extend(
+                ['gemm', 'implicit gemm', 'implicit precomp gemm', 'guess'])
     except ImportError:
         pass
 

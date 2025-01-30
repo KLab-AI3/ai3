@@ -225,5 +225,6 @@ def main():
          with_bias=True,
          test_name='batched multi channel with bias')
 
+
 if __name__ == '__main__':
     main()

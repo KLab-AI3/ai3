@@ -34,5 +34,6 @@ def main():
     test(input_shape=shape,
          test_name=f'{len(shape)} dim')
 
+
 if __name__ == '__main__':
     main()

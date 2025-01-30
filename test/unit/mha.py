@@ -54,13 +54,23 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
 
 def main():
     print('MHA')
+
+    # --
+    test(num_samples=20,
+         seq_len=10,
+         embed_dim=64,
+         num_heads=4,
+         bias=True,
+         batch_first=True,
+         test_name='batched batch_first')
+    exit(0)
+    # --
+
     test(num_samples=None,
          seq_len=10,
          embed_dim=64,
          num_heads=1,
          test_name='not batched no bias')
-    exit(0)
-
     test(num_samples=None,
          seq_len=20,
          embed_dim=64,
@@ -88,14 +98,8 @@ def main():
          kdim=32,
          vdim=16,
          test_name='not batched different unique embed, k, v')
-    test(num_samples=None,
-         seq_len=50,
-         embed_dim=64,
-         num_heads=4,
-         kdim=32,
-         vdim=16,
-         bias=False,
-         add_bias_kv=True,
+    test(num_samples=None, seq_len=50, embed_dim=64, num_heads=4, kdim=32,
+         vdim=16, bias=False, add_bias_kv=True,
          test_name='not batched different unique embed, k, v, with add_bias_kv')
     test(num_samples=3,
          seq_len=40,
@@ -124,6 +128,7 @@ def main():
          bias=True,
          add_bias_kv=False,
          test_name='unique, with bias')
+
 
 if __name__ == '__main__':
     main()
