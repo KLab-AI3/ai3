@@ -91,11 +91,6 @@ class MultiheadAttention(nn.Module):
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
 
-    # TODO see what NAT implemented and if it is compatible with this SDP Attention then
-    # maybe just call it after all this processing, but the gains would be big if
-    # all of this is done it C++
-    # TODO implement, transpose, repeat, cat, linear for larger inputs
-    # TODO when doing attn_mask alter values to 0, -inf like they are doing
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
                 is_causal=False):
@@ -116,12 +111,18 @@ class MultiheadAttention(nn.Module):
             key = key.transpose(0, 1)
             value = value.transpose(0, 1)
 
+        print(query.shape)
+        print(self.q_proj_weight.shape)
+        print(self.bias_q_in.shape)
+
+        # cuDNN can be called here when we don't need to concat bias
         batch_size, tgt_len, embed_dim = query.shape
 
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
+        # TODO if either of these biasas are needed do it with torch
         if self.bias_k is not None and self.bias_v is not None:
             k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
             v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
@@ -130,8 +131,6 @@ class MultiheadAttention(nn.Module):
             zero_attn_shape = (batch_size, 1, k.shape[2])
             k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
             v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
-
-        # cuDNN called here?
 
         src_len = k.shape[1]
 
@@ -142,12 +141,17 @@ class MultiheadAttention(nn.Module):
         v = v.view(batch_size, src_len, self.num_heads,
                    self.head_dim).transpose(1, 2)
 
+        need_to_project = True
         # attn_output = F.scaled_dot_product_attention(q, k, v)
-        # assert (callable(ops.ai3.mha))
-        attn_output = ops.ai3.mha(q, k, v, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
-                           self.bias_q_in, self.bias_k_in, self.bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                           self.out_proj_bias, self.num_heads, self.head_dim, self.kdim, self.vdim, self.embed_dim,
-                           key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal, self.algorithm)
+        assert (callable(ops.ai3.mha))
+        attn_output = ops.ai3.mha(
+            q, k, v, self.q_proj_weight, self.k_proj_weight, self.
+            v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
+            self.bias_k, self.bias_v, self.out_proj_weight, self.
+            out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
+            self.kdim, self.vdim, self.embed_dim, key_padding_mask,
+            need_weights, attn_mask, average_attn_weights, is_causal,
+            need_to_project, self.algorithm)
 
         attn_output = attn_output.transpose(
             1, 2).view(
@@ -333,15 +337,18 @@ torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
 # TODO setup training
+
+
 def mha(
         query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         q_proj: torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor,
         q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
         v_proj_bias: torch.Tensor, k_bias: torch.Tensor, v_bias: torch.Tensor,
-        out_proj: torch.Tensor, out_proj_bias: torch.Tensor, num_heads: int,
+        out_proj: torch.Tensor, out_proj_bias: torch.Tensor, add_zero_attn: bool, num_heads: int,
         head_dim: int, k_dim: int, v_dim: int, embed_dim: int,
         key_padding_mask: torch.Tensor, need_weights: bool,
         attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
+        need_to_project: bool,
         algorithm: str) -> torch.Tensor:
     q_ptr = query.data_ptr()
     k_ptr = key.data_ptr()
@@ -363,9 +370,10 @@ def mha(
         q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
         query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
         v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
-        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, num_heads,
-        head_dim, k_dim, v_dim, embed_dim, attn_mask_ptr, key_padding_mask_ptr,
-        need_weights, average_attn_weights, is_causal, algorithm)
+        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
+        num_heads, head_dim, k_dim, v_dim, embed_dim, attn_mask_ptr,
+        key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
+        need_to_project, algorithm)
     buffer = torch.frombuffer(
         out, dtype=query.dtype).view(
         out.shape)

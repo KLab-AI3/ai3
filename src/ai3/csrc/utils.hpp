@@ -145,18 +145,21 @@ template <typename... Args> [[noreturn]] void bail(Args... args) {
     bail("trying to get ", thing, " when ", platform, " is not supported");
 }
 
+template <typename T> [[noreturn]] inline void forward_not_implemented() {
+    bail("forward not implemented for: " + std::string(typeid(T).name()));
+}
+
 inline void warning(const std::string msg) {
     std::cerr << "warning: " << msg << std::endl;
 }
 
 inline void mps_metal_unsupported_double() {
-    errs::warning(
-        "MPS/metal does not support double precision, transforming tensors "
-        "to "
-        "float "
-        "precision and back see: "
-        "https://developer.apple.com/documentation/metalperformanceshaders/"
-        "mpsdatatype");
+    warning("MPS/metal does not support double precision, transforming tensors "
+            "to "
+            "float "
+            "precision and back see: "
+            "https://developer.apple.com/documentation/metalperformanceshaders/"
+            "mpsdatatype");
 }
 
 template <typename... Args> void bail_if(bool check, Args... args) {

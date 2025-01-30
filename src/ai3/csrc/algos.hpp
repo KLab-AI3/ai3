@@ -79,11 +79,13 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &, const Tensor &,                   \
-        const std::optional<const Tensor> &, const uint, const uint,           \
-        std::optional<Tensor> &, std::optional<Tensor> &, const bool,          \
-        const bool, const bool
+        const std::optional<const Tensor> &, const bool, const uint,           \
+        const uint, std::optional<Tensor> &, std::optional<Tensor> &,          \
+        const bool, const bool, const bool, const bool
 
 namespace mha {
+const int RANK_NOT_PROJECTED = 3;
+const int RANK_PROJECTED = 4;
 template <typename dtype> Tensor standard(MHA_PARAMS);
 
 } // namespace mha
