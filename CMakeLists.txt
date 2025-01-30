@@ -9,6 +9,7 @@ project(
 set(LIBRARIES)
 set(TARGET_PROPERTIES)
 set(COMPILE_OPTIONS)
+set(CPP_COMPILE_OPTIONS)
 if(NOT WIN32)
     list(APPEND COMPILE_OPTIONS -Wfatal-errors)
 endif()
@@ -25,6 +26,8 @@ list(APPEND INCLUDE_DIRECTORIES ${CSRC_DIR})
 set(CSRC_FILES
     ${CSRC_DIR}/ai3.cpp
 )
+set(CUDA_FILES)
+file(GLOB CUDA_FILES "${CSRC_DIR}/*.cu")
 
 set(USE_MPS_METAL NO)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -51,12 +54,13 @@ find_package(CUDAToolkit)
 set(USE_CUBLAS NO)
 set(USE_CUDNN NO)
 if(CUDAToolkit_FOUND)
-    message(WARNING "Found Toolkit")
+    message(STATUS "Found Toolkit")
     list(APPEND TARGET_PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED TRUE
         CUDA_EXTENSIONS OFF
-        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        CUDA_RUNTIME_LIBRARY Shared
         CUDA_ARCHITECTURES "86"
     )
     list(APPEND LIBRARIES CUDA::cudart)
@@ -94,7 +98,7 @@ if(SYCL_FOUND)
     list(APPEND LINK_DIRECTORIES ${SYCL_LIBRARY_DIR})
 
     separate_arguments(SYCL_CFLAGS)
-    list(APPEND COMPILE_OPTIONS ${SYCL_CFLAGS})
+    list(APPEND CPP_COMPILE_OPTIONS ${SYCL_CFLAGS})
 
     separate_arguments(SYCL_LFLAGS)
     list(APPEND LINK_OPTIONS ${SYCL_LFLAGS})
@@ -114,48 +118,55 @@ function(check_and_add_impl file platform_label platform_ext)
     endif()
 endfunction()
 
-function(use_supported_platform_impls op)
+function(use_supported_platform_impls op include_non_plain)
     file(GLOB IMPLS "${CSRC_DIR}/${op}/*_plain.cpp")
+    if (include_non_plain)
+        if(USE_CUDNN)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "cudnn" "cpp")
+            endforeach()
+        endif()
 
-    if(USE_CUDNN)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "cudnn" "cpp")
-        endforeach()
-    endif()
+        if(USE_CUBLAS)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "cublas" "cpp")
+            endforeach()
+        endif()
 
-    if(USE_CUBLAS)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "cublas" "cpp")
-        endforeach()
-    endif()
+        if(USE_MPS_METAL)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "mps" "mm")
+            endforeach()
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "metal" "mm")
+            endforeach()
+        endif()
 
-    if(USE_MPS_METAL)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "mps" "mm")
-        endforeach()
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "metal" "mm")
-        endforeach()
-    endif()
-
-    if(USE_SYCL)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "sycl" "cpp")
-        endforeach()
+        if(USE_SYCL)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "sycl" "cpp")
+            endforeach()
+        endif()
     endif()
 
     list(APPEND CSRC_FILES ${IMPLS})
     set(CSRC_FILES ${CSRC_FILES} PARENT_SCOPE)
 endfunction()
 
-use_supported_platform_impls("conv2d")
-use_supported_platform_impls("linear")
-use_supported_platform_impls("avgpool2d")
-use_supported_platform_impls("adaptiveavgpool2d")
-use_supported_platform_impls("maxpool2d")
-use_supported_platform_impls("relu")
-use_supported_platform_impls("flatten")
-use_supported_platform_impls("mha")
+use_supported_platform_impls("conv2d" NO)
+use_supported_platform_impls("linear" NO )
+use_supported_platform_impls("avgpool2d" NO)
+use_supported_platform_impls("adaptiveavgpool2d" NO)
+use_supported_platform_impls("maxpool2d" NO)
+use_supported_platform_impls("relu" NO)
+use_supported_platform_impls("flatten" NO)
+use_supported_platform_impls("mha" YES)
+
+if(CUDA_FILES AND CUDAToolkit_FOUND)
+    enable_language(CUDA)
+    list(APPEND CSRC_FILES ${CUDA_FILES})
+endif()
+
 
 pybind11_add_module(_core MODULE ${CSRC_FILES})
 set_target_properties(_core PROPERTIES
@@ -164,8 +175,13 @@ set_target_properties(_core PROPERTIES
     CXX_EXTENSIONS NO
     ${TARGET_PROPERTIES}
 )
-target_compile_options(_core PRIVATE ${COMPILE_OPTIONS})
-target_link_options(_core PRIVATE ${LINK_OPTIONS})
+
+target_compile_options(_core PRIVATE
+    ${COMPILE_OPTIONS}
+    $<$<COMPILE_LANGUAGE:CXX>:${CPP_COMPILE_OPTIONS}>
+)
+target_link_options(_core PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${LINK_OPTIONS}>) # TODO if this works then do same LINK_OPTIONS split as compile options
 target_link_libraries(_core PRIVATE ${LIBRARIES})
 target_include_directories(_core PRIVATE ${INCLUDE_DIRECTORIES})
 target_link_directories(_core PRIVATE ${LINK_DIRECTORIES})

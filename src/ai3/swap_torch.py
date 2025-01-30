@@ -94,6 +94,7 @@ class MultiheadAttention(nn.Module):
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
                 is_causal=False):
+        # TODO put these errors in cpp as custom might impl
         errors.bail_if(need_weights, 'no support for attention weights')
         errors.bail_if(need_weights and average_attn_weights,
                        'no support for average attention weights')
@@ -111,60 +112,70 @@ class MultiheadAttention(nn.Module):
             key = key.transpose(0, 1)
             value = value.transpose(0, 1)
 
-        print(query.shape)
-        print(self.q_proj_weight.shape)
-        print(self.bias_q_in.shape)
+        if not(self.bias_k is not None or self.bias_v is not None or self.add_zero_attn):
+            attn_output = ops.ai3.mha(
+                query, key, value, self.q_proj_weight, self.k_proj_weight, self.
+                v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
+                self.bias_k, self.bias_v, self.out_proj_weight, self.
+                out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
+                self.kdim, self.vdim, self.embed_dim, key_padding_mask,
+                need_weights, attn_mask, average_attn_weights, is_causal,
+                True, self.algorithm)
+            return attn_output, None
+        else:
+            print(query.shape)
+            print(self.q_proj_weight.shape)
+            print(self.bias_q_in.shape)
 
-        # cuDNN can be called here when we don't need to concat bias
-        batch_size, tgt_len, embed_dim = query.shape
+            # cuDNN can be called here when we don't need to concat bias
+            batch_size, tgt_len, embed_dim = query.shape
 
-        q = F.linear(query, self.q_proj_weight, self.bias_q_in)
-        k = F.linear(key, self.k_proj_weight, self.bias_k_in)
-        v = F.linear(value, self.v_proj_weight, self.bias_v_in)
+            q = F.linear(query, self.q_proj_weight, self.bias_q_in)
+            k = F.linear(key, self.k_proj_weight, self.bias_k_in)
+            v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
-        # TODO if either of these biasas are needed do it with torch
-        if self.bias_k is not None and self.bias_v is not None:
-            k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
-            v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
+            # TODO if either of these biasas are needed do it with torch
+            if self.bias_k is not None and self.bias_v is not None:
+                k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
+                v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
 
-        if self.add_zero_attn:
-            zero_attn_shape = (batch_size, 1, k.shape[2])
-            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
-            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
+            if self.add_zero_attn:
+                zero_attn_shape = (batch_size, 1, k.shape[2])
+                k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
+                v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
 
-        src_len = k.shape[1]
+            src_len = k.shape[1]
 
-        q = q.view(batch_size, tgt_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
-        k = k.view(batch_size, src_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
-        v = v.view(batch_size, src_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
+            q = q.view(batch_size, tgt_len, self.num_heads,
+                       self.head_dim).transpose(1, 2)
+            k = k.view(batch_size, src_len, self.num_heads,
+                       self.head_dim).transpose(1, 2)
+            v = v.view(batch_size, src_len, self.num_heads,
+                       self.head_dim).transpose(1, 2)
 
-        need_to_project = True
-        # attn_output = F.scaled_dot_product_attention(q, k, v)
-        assert (callable(ops.ai3.mha))
-        attn_output = ops.ai3.mha(
-            q, k, v, self.q_proj_weight, self.k_proj_weight, self.
-            v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
-            self.bias_k, self.bias_v, self.out_proj_weight, self.
-            out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
-            self.kdim, self.vdim, self.embed_dim, key_padding_mask,
-            need_weights, attn_mask, average_attn_weights, is_causal,
-            need_to_project, self.algorithm)
+            attn_output = F.scaled_dot_product_attention(q, k, v)
+            # assert (callable(ops.ai3.mha))
+            # attn_output = ops.ai3.mha(
+            #     q, k, v, self.q_proj_weight, self.k_proj_weight, self.
+            #     v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
+            #     self.bias_k, self.bias_v, self.out_proj_weight, self.
+            #     out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
+            #     self.kdim, self.vdim, self.embed_dim, key_padding_mask,
+            #     need_weights, attn_mask, average_attn_weights, is_causal,
+            #     need_to_project, self.algorithm)
 
-        attn_output = attn_output.transpose(
-            1, 2).view(
-            batch_size * tgt_len, embed_dim)
-        attn_output = F.linear(
-            attn_output, self.out_proj_weight, self.out_proj_bias)
-        attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
-        if not batched:
-            attn_output = attn_output.squeeze(0)
-        elif not self.batch_first:
-            attn_output = attn_output.transpose(0, 1)
+            attn_output = attn_output.transpose(
+                1, 2).view(
+                batch_size * tgt_len, embed_dim)
+            attn_output = F.linear(
+                attn_output, self.out_proj_weight, self.out_proj_bias)
+            attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
+            if not batched:
+                attn_output = attn_output.squeeze(0)
+            elif not self.batch_first:
+                attn_output = attn_output.transpose(0, 1)
 
-        return attn_output, None
+            return attn_output, None
 
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {

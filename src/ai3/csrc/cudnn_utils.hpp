@@ -26,7 +26,6 @@ template <> inline int64_t cudnn_byte_alignment<double>() { return 8; }
         if (status != CUDNN_STATUS_SUCCESS) {                                  \
             std::cerr << "cuDNN error at " << __FILE__ << ":" << __LINE__      \
                       << ": " << cudnnGetErrorString(status) << std::endl;     \
-            std::cerr << std::endl;                                            \
             std::exit(EXIT_FAILURE);                                           \
         }                                                                      \
     }

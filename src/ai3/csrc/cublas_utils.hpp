@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+// TODO rename to cuda_utils
 #pragma once
 
 #include <cublas_v2.h>
@@ -16,13 +17,15 @@ template <> inline cudaDataType cublas_data_type<double>() {
 
 #define CUDA_CHECK(status)                                                     \
     if (status != cudaSuccess) {                                               \
-        std::cerr << "CUDA error: " << cudaGetErrorString(status)              \
-                  << std::endl;                                                \
-        exit(1);                                                               \
+        std::cerr << "cuDNN error at " << __FILE__ << ":" << __LINE__ << ": "  \
+                  << cudaGetErrorString(status) << std::endl;                  \
+        std::exit(EXIT_FAILURE);                                               \
     }
 
 #define CUBLAS_CHECK(status)                                                   \
     if (status != CUBLAS_STATUS_SUCCESS) {                                     \
         std::cerr << "cuBLAS error: " << status << std::endl;                  \
-        exit(1);                                                               \
+        std::cerr << "cuBlas error at " << __FILE__ << ":" << __LINE__ << ": " \
+                  << status << std::endl;                                      \
+        std::exit(EXIT_FAILURE);                                               \
     }

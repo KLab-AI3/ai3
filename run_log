@@ -1,4 +1,4 @@
 export CUDNN_LOGLEVEL_DBG=3
 export CUDNN_LOGDEST_DBG=log.txt
-nvcc -o attempt mha_adv_attempt.cpp -lcudnn
-./attempt
+# nvcc -o attempt mha_adv_attempt.cpp -lcudnn
+run install.ev test.unit.mha

@@ -24,8 +24,8 @@ const int WEIGHT_RANK = 3;
 const int BIAS_RANK = 3;
 
 // weight
-// shape 4  16 64
-// stride 16 1 64 meaning HWC shape with CHW in memory
+// shape 4 16 64
+// stride 16 1 64 meaning CHW shape with HWC in memory
 // bias (same as array)
 // shape 1 64 1
 // stride 64 1 1
@@ -49,6 +49,9 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
 }
 
 int main() {
+    // proj bias and proj weights implemented
+    // do in ai3!!
+    // TODO make this in a input shape vector {batch_size, seq_len, embed}
     int batch_size = 2;
     int num_heads = 4;
     int seq_len_q = 10;
