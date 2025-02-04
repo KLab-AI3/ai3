@@ -4,15 +4,6 @@
 
 #include <ai3.hpp>
 
-#include "../custom/adaptiveavgpool2d.hpp"
-#include "../custom/avgpool2d.hpp"
-#include "../custom/conv2d.hpp"
-#include "../custom/flatten.hpp"
-#include "../custom/linear.hpp"
-#include "../custom/maxpool2d.hpp"
-#include "../custom/mha.hpp"
-#include "../custom/relu.hpp"
-
 #define CONV2D_PARAMS                                                          \
     Tensor, const Tensor &, const std::optional<const Tensor> &, const uint,   \
         const uint, const uint, const uint, const uint, const uint,            \
@@ -73,17 +64,20 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
 }
 
 #define MHA_PARAMS                                                             \
-    Tensor, Tensor, Tensor, const Tensor &, const Tensor &, const Tensor &,    \
-        const std::optional<const Tensor> &,                                   \
+    Tensor, Tensor, Tensor, const mha::MemFormat, const Tensor &,              \
+        const Tensor &, const Tensor &, const std::optional<const Tensor> &,   \
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &, const Tensor &,                   \
         const std::optional<const Tensor> &, const bool, const uint,           \
-        const uint, std::optional<Tensor> &, std::optional<Tensor> &,          \
-        const bool, const bool, const bool, const bool
+        const uint, const float, std::optional<Tensor> &,                      \
+        std::optional<Tensor> &, const bool, const bool, const bool,           \
+        const bool
 
 namespace mha {
+enum class MemFormat { NSE, SNE };
+
 template <typename dtype> Tensor standard(MHA_PARAMS);
 
 } // namespace mha

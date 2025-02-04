@@ -5,6 +5,15 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "../custom/adaptiveavgpool2d.hpp"
+#include "../custom/avgpool2d.hpp"
+#include "../custom/conv2d.hpp"
+#include "../custom/flatten.hpp"
+#include "../custom/linear.hpp"
+#include "../custom/maxpool2d.hpp"
+#include "../custom/mha.hpp"
+#include "../custom/relu.hpp"
+
 const std::string DEFAULT_OPT_STR = "default";
 const std::string CUSTOM_OPT_STR = "custom";
 
@@ -369,15 +378,17 @@ class Conv2D : virtual public Layer {
     const std::string algorithm;
 };
 
-Tensor conv2d_with_algo(
-    const intptr_t input_address, const std::vector<uint> input_shape,
-    const ScalarType input_type, const intptr_t weight_address,
-    const std::vector<uint> weight_shape,
-    const std::optional<intptr_t> bias_addr, const uint padding_h,
-    const uint padding_w, const uint stride_h, const uint stride_w,
-    const uint dilation_h, const uint dilation_w, const uint padding_mode_uint,
-    const uint groups, const std::string algorithm) {
-    PaddingMode padding_mode = static_cast<PaddingMode>(padding_mode_uint);
+Tensor conv2d_with_algo(const intptr_t input_address,
+                        const std::vector<uint> input_shape,
+                        const ScalarType input_type,
+                        const intptr_t weight_address,
+                        const std::vector<uint> weight_shape,
+                        const std::optional<intptr_t> bias_addr,
+                        const uint padding_h, const uint padding_w,
+                        const uint stride_h, const uint stride_w,
+                        const uint dilation_h, const uint dilation_w,
+                        const PaddingMode padding_mode, const uint groups,
+                        const std::string algorithm) {
     Conv2D layer(weight_address, weight_shape, bias_addr, padding_h, padding_w,
                  stride_h, stride_w, dilation_h, dilation_w, padding_mode,
                  groups, algorithm, input_type, false);
@@ -404,7 +415,8 @@ class MultiheadAttention : virtual public Layer {
                        const std::optional<intptr_t> out_proj_bias_address,
                        const bool add_zero_attn, const uint num_heads,
                        const uint head_dim, const uint k_dim, const uint v_dim,
-                       const uint embed_dim, const std::string algorithm,
+                       const uint embed_dim, const float dropout,
+                       const std::string algorithm,
                        const ScalarType scalar_type, bool own_params = true)
         : q_proj(
               own_params
@@ -437,10 +449,11 @@ class MultiheadAttention : virtual public Layer {
           out_bias(Tensor::from_optional(out_proj_bias_address, {embed_dim},
                                          scalar_type, own_params)),
           add_zero_attn(add_zero_attn), num_heads(num_heads),
-          head_dim(head_dim), algorithm(algorithm) {}
+          head_dim(head_dim), dropout(dropout), algorithm(algorithm) {}
 
     template <typename dtype>
     Tensor forward(Tensor query, Tensor key, Tensor value,
+                   const mha::MemFormat input_format,
                    std::optional<Tensor> attn_mask,
                    std::optional<Tensor> key_padding_mask,
                    const bool need_weights, const bool average_attn_weights,
@@ -448,26 +461,28 @@ class MultiheadAttention : virtual public Layer {
         if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_MHA) {
                 return mha_custom<dtype>(
-                    std::move(query), std::move(key), std::move(value), q_proj,
-                    k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias,
-                    v_bias, out_proj, out_bias, add_zero_attn, num_heads,
-                    head_dim, key_padding_mask, attn_mask, need_weights,
+                    std::move(query), std::move(key), std::move(value),
+                    input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,
+                    v_bias_in, k_bias, v_bias, out_proj, out_bias,
+                    add_zero_attn, num_heads, head_dim, dropout,
+                    key_padding_mask, attn_mask, need_weights,
                     average_attn_weights, is_causal);
             } else {
                 return mha::standard<dtype>(
-                    std::move(query), std::move(key), std::move(value), q_proj,
-                    k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias,
-                    v_bias, out_proj, out_bias, add_zero_attn, num_heads,
-                    head_dim, key_padding_mask, attn_mask, need_weights,
+                    std::move(query), std::move(key), std::move(value),
+                    input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,
+                    v_bias_in, k_bias, v_bias, out_proj, out_bias,
+                    add_zero_attn, num_heads, head_dim, dropout,
+                    key_padding_mask, attn_mask, need_weights,
                     average_attn_weights, is_causal, need_to_project);
             }
         } else if (algorithm == CUSTOM_OPT_STR) {
             return mha_custom<dtype>(
-                std::move(query), std::move(key), std::move(value), q_proj,
-                k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
-                out_proj, out_bias, add_zero_attn, num_heads, head_dim,
-                key_padding_mask, attn_mask, need_weights, average_attn_weights,
-                is_causal);
+                std::move(query), std::move(key), std::move(value),
+                input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,
+                v_bias_in, k_bias, v_bias, out_proj, out_bias, add_zero_attn,
+                num_heads, head_dim, dropout, key_padding_mask, attn_mask,
+                need_weights, average_attn_weights, is_causal);
         }
         errs::invalid_algo("MultiheadAttention", algorithm);
     }
@@ -490,6 +505,7 @@ class MultiheadAttention : virtual public Layer {
     const std::optional<const Tensor> attn_mask;
     const uint num_heads;
     const uint head_dim;
+    const float dropout;
     const std::string algorithm;
 };
 
@@ -498,6 +514,7 @@ class MultiheadAttention : virtual public Layer {
 Tensor
 mha_with_algo(const intptr_t q_address, const intptr_t k_address,
               const intptr_t v_address, const ScalarType input_type,
+              const mha::MemFormat input_format,
               const std::vector<uint> q_shape, const std::vector<uint> k_shape,
               const std::vector<uint> v_shape, const intptr_t q_proj_address,
               const intptr_t k_proj_address, const intptr_t v_proj_address,
@@ -510,17 +527,18 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
               const std::optional<intptr_t> out_proj_bias_address,
               const bool add_zero_attn, const uint num_heads,
               const uint head_dim, const uint k_dim, const uint v_dim,
-              const uint embed_dim,
+              const uint embed_dim, const float dropout,
               const std::optional<intptr_t> attn_mask_address,
               const std::optional<intptr_t> key_padding_mask_address,
               const bool need_weights, const bool average_attn_weights,
               const bool is_causal, const bool need_to_project,
               const std::string algorithm) {
-    MultiheadAttention layer(
-        q_proj_address, k_proj_address, v_proj_address, q_bias_in_address,
-        k_bias_in_address, v_bias_in_address, k_bias_address, v_bias_address,
-        out_proj_address, out_proj_bias_address, add_zero_attn, num_heads,
-        head_dim, k_dim, v_dim, embed_dim, algorithm, input_type, false);
+    MultiheadAttention layer(q_proj_address, k_proj_address, v_proj_address,
+                             q_bias_in_address, k_bias_in_address,
+                             v_bias_in_address, k_bias_address, v_bias_address,
+                             out_proj_address, out_proj_bias_address,
+                             add_zero_attn, num_heads, head_dim, k_dim, v_dim,
+                             embed_dim, dropout, algorithm, input_type, false);
     std::optional<Tensor> attn_mask =
         attn_mask_address
             ? std::optional<Tensor>(Tensor::form_tensor(
@@ -539,18 +557,24 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
                   input_type))
             : std::nullopt;
 
+    std::cout << "v shape" << std::endl;
+    for (auto &s : v_shape) {
+        std::cout << s << std::endl;
+    }
+    std::cout << "end" << std::endl;
+
     if (input_type == ScalarType::Float32) {
         return layer.forward<float>(
             Tensor::form_tensor(q_address, q_shape, input_type),
             Tensor::form_tensor(k_address, k_shape, input_type),
-            Tensor::form_tensor(v_address, v_shape, input_type),
+            Tensor::form_tensor(v_address, v_shape, input_type), input_format,
             std::move(attn_mask), std::move(key_padding_mask), need_weights,
             average_attn_weights, is_causal, need_to_project);
     }
     return layer.forward<double>(
         Tensor::form_tensor(q_address, q_shape, input_type),
         Tensor::form_tensor(k_address, k_shape, input_type),
-        Tensor::form_tensor(v_address, v_shape, input_type),
+        Tensor::form_tensor(v_address, v_shape, input_type), input_format,
         std::move(attn_mask), std::move(key_padding_mask), need_weights,
         average_attn_weights, is_causal, need_to_project);
 }
@@ -634,6 +658,10 @@ PYBIND11_MODULE(_core, m) {
         .value("reflect", PaddingMode::Reflect)
         .value("replicate", PaddingMode::Replicate)
         .value("circular", PaddingMode::Circular)
+        .export_values();
+    py::enum_<mha::MemFormat>(m, "MHAMemFormat")
+        .value("NSE", mha::MemFormat::NSE)
+        .value("SNE", mha::MemFormat::SNE)
         .export_values();
     py::enum_<ScalarType>(m, "ScalarType")
         .value("Float32", ScalarType::Float32)

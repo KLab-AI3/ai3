@@ -154,7 +154,7 @@ function(use_supported_platform_impls op include_non_plain)
 endfunction()
 
 use_supported_platform_impls("conv2d" NO)
-use_supported_platform_impls("linear" NO )
+use_supported_platform_impls("linear" NO)
 use_supported_platform_impls("avgpool2d" NO)
 use_supported_platform_impls("adaptiveavgpool2d" NO)
 use_supported_platform_impls("maxpool2d" NO)

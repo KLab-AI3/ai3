@@ -14,12 +14,22 @@ def using_sycl() -> bool:
     ...
 def default_opt_str() -> str:
     ...
+def custom_opt_str() -> str:
+    ...
+def custom_mha_handles_inputs() -> bool:
+    ...
+def custom_mha_projects_output() -> bool:
+    ...
 
 class PaddingMode(Enum):
     zeros: int
     reflect: int
     replicate: int
     circular: int
+
+class MHAMemFormat(Enum):
+    NSE: int
+    SNE: int
 
 class ScalarType(Enum):
     Float32: int
@@ -46,11 +56,12 @@ def conv2d(input_address: int, input_shape: Sequence[int], input_type: ScalarTyp
                  weight_address: int, weight_shape: Sequence[int], bias_addr:
                  Optional[int], padding_h: int, padding_w: int, stride_h: int,
                  stride_w: int, dilation_h: int, dilation_w: int, padding_mode:
-                 int, groups: int, algorithm: str) -> Tensor:
+                 PaddingMode, groups: int, algorithm: str) -> Tensor:
     ...
 
 def mha(q_address: int, k_address: int,
         v_address: int, input_type: ScalarType,
+        mem_fmt: MHAMemFormat,
         q_shape: Sequence[int],
         k_shape: Sequence[int],
         v_shape: Sequence[int],
@@ -67,7 +78,7 @@ def mha(q_address: int, k_address: int,
         add_zero_attn: bool,
         num_heads: int, head_dim: int,
         k_dim: int, v_dim: int, embed_dim: int,
-        attn_mask_address: Optional[int],
+        dropout: float, attn_mask_address: Optional[int],
         key_padding_mask_address: Optional[int],
         need_weights: bool,
         average_attn_weights: bool, is_causal: bool,

@@ -68,6 +68,7 @@ class MultiheadAttention(nn.Module):
         self.head_dim = orig.head_dim
         self.kdim = orig.kdim
         self.vdim = orig.vdim
+        self.dropout = orig.dropout
 
         self.add_zero_attn = orig.add_zero_attn
 
@@ -91,91 +92,117 @@ class MultiheadAttention(nn.Module):
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
 
+    # TODO alter these to fix the assumed batch first doing the non handling inputs case
+    def handle_inputs(self, query: torch.Tensor, key: torch.Tensor, value:
+                      torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
+                                             torch.Tensor]:
+        batch_size, tgt_len, _ = query.shape
+
+        q = F.linear(query, self.q_proj_weight, self.bias_q_in)
+        k = F.linear(key, self.k_proj_weight, self.bias_k_in)
+        v = F.linear(value, self.v_proj_weight, self.bias_v_in)
+
+        if self.bias_k is not None and self.bias_v is not None:
+            k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
+            v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
+
+        if self.add_zero_attn:
+            zero_attn_shape = (batch_size, 1, k.shape[2])
+            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
+            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
+
+        src_len = k.shape[1]
+
+        q = q.view(batch_size, tgt_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, src_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, src_len, self.num_heads,
+                   self.head_dim).transpose(1, 2)
+        return q, k, v
+
+    def handle_outputs(
+            self, attn_batch_first_output: torch.Tensor, batch_size: int,
+            tgt_len: int, embed_dim: int) -> torch.Tensor:
+        attn_batch_first_output = attn_batch_first_output.transpose(
+            1, 2).view(
+            batch_size * tgt_len, embed_dim)
+        attn_batch_first_output = F.linear(
+            attn_batch_first_output, self.out_proj_weight, self.out_proj_bias)
+        return attn_batch_first_output.view(
+            batch_size, tgt_len, embed_dim)
+
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
                 is_causal=False):
-        # TODO put these errors in cpp as custom might impl
-        errors.bail_if(need_weights, 'no support for attention weights')
-        errors.bail_if(need_weights and average_attn_weights,
-                       'no support for average attention weights')
-        errors.bail_if(key_padding_mask, 'no support for key padding mask')
-        errors.bail_if(attn_mask, 'no support for attention mask')
-        errors.bail_if(is_causal, 'no support for causal')
-
         batched = query.dim() == 3
         if not batched:
-            query = query.unsqueeze(0)
-            key = key.unsqueeze(0)
-            value = value.unsqueeze(0)
-        elif not self.batch_first:
-            query = query.transpose(0, 1)
-            key = key.transpose(0, 1)
-            value = value.transpose(0, 1)
+            dim = 0 if self.batch_first else 1
+            query = query.unsqueeze(dim)
+            key = key.unsqueeze(dim)
+            value = value.unsqueeze(dim)
 
-        if not(self.bias_k is not None or self.bias_v is not None or self.add_zero_attn):
+        mem_fmt = _core.MHAMemFormat.NSE if self.batch_first else _core.MHAMemFormat.SNE
+        assert callable(ops.ai3.mha)
+        if self.algorithm == _core.custom_opt_str():
+            if _core.custom_mha_handles_inputs():
+                attn_output = ops.ai3.mha(
+                    query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                    bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                    self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                    self.dropout,
+                    key_padding_mask, need_weights, attn_mask,
+                    average_attn_weights, is_causal, False, self.algorithm)
+            else:
+                q, k, v = self.handle_inputs(query, key, value)
+                attn_output = ops.ai3.mha( # TODO is it better to have two separate functions? will also make it cleaner and probably easier to understand
+                    q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                    bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                                          self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                                          self.dropout,
+                    key_padding_mask, need_weights, attn_mask,
+                    average_attn_weights, is_causal, False, self.algorithm)
+                if not _core.custom_mha_projects_output():
+                    batch_size, tgt_len, embed_dim = query.shape
+                    attn_output = self.handle_outputs(
+                        attn_output, batch_size, tgt_len, embed_dim)
+        elif not (self.bias_k is not None or self.bias_v is not None or
+                  self.add_zero_attn or is_causal or attn_mask is not None or
+                  key_padding_mask is not None or need_weights or (need_weights
+                                                                   and
+                                                                   average_attn_weights)):
             attn_output = ops.ai3.mha(
-                query, key, value, self.q_proj_weight, self.k_proj_weight, self.
-                v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
-                self.bias_k, self.bias_v, self.out_proj_weight, self.
-                out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
-                self.kdim, self.vdim, self.embed_dim, key_padding_mask,
-                need_weights, attn_mask, average_attn_weights, is_causal,
-                True, self.algorithm)
-            return attn_output, None
+                query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                self.out_proj_bias, self.add_zero_attn, self.num_heads, self.
+                head_dim, self.kdim, self.vdim, self.embed_dim,
+                self.dropout,
+                key_padding_mask, need_weights, attn_mask,
+                average_attn_weights, is_causal, True, self.algorithm)
         else:
-            print(query.shape)
-            print(self.q_proj_weight.shape)
-            print(self.bias_q_in.shape)
+            q, k, v = self.handle_inputs(query, key, value)
+            attn_output = ops.ai3.mha(
+                query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                self.out_proj_bias, self.add_zero_attn, self.num_heads, self.
+                head_dim, self.kdim, self.vdim, self.embed_dim,
+                self.dropout,
+                key_padding_mask, need_weights, attn_mask,
+                average_attn_weights, is_causal, False, self.algorithm)
 
-            # cuDNN can be called here when we don't need to concat bias
-            batch_size, tgt_len, embed_dim = query.shape
-
-            q = F.linear(query, self.q_proj_weight, self.bias_q_in)
-            k = F.linear(key, self.k_proj_weight, self.bias_k_in)
-            v = F.linear(value, self.v_proj_weight, self.bias_v_in)
-
-            # TODO if either of these biasas are needed do it with torch
-            if self.bias_k is not None and self.bias_v is not None:
-                k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
-                v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
-
-            if self.add_zero_attn:
-                zero_attn_shape = (batch_size, 1, k.shape[2])
-                k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
-                v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
-
-            src_len = k.shape[1]
-
-            q = q.view(batch_size, tgt_len, self.num_heads,
-                       self.head_dim).transpose(1, 2)
-            k = k.view(batch_size, src_len, self.num_heads,
-                       self.head_dim).transpose(1, 2)
-            v = v.view(batch_size, src_len, self.num_heads,
-                       self.head_dim).transpose(1, 2)
-
-            attn_output = F.scaled_dot_product_attention(q, k, v)
-            # assert (callable(ops.ai3.mha))
-            # attn_output = ops.ai3.mha(
-            #     q, k, v, self.q_proj_weight, self.k_proj_weight, self.
-            #     v_proj_weight, self.bias_q_in, self.bias_k_in, self.bias_v_in,
-            #     self.bias_k, self.bias_v, self.out_proj_weight, self.
-            #     out_proj_bias, self.add_zero_attn, self.num_heads, self.head_dim,
-            #     self.kdim, self.vdim, self.embed_dim, key_padding_mask,
-            #     need_weights, attn_mask, average_attn_weights, is_causal,
-            #     need_to_project, self.algorithm)
-
-            attn_output = attn_output.transpose(
-                1, 2).view(
-                batch_size * tgt_len, embed_dim)
-            attn_output = F.linear(
-                attn_output, self.out_proj_weight, self.out_proj_bias)
-            attn_output = attn_output.view(batch_size, tgt_len, embed_dim)
-            if not batched:
+        if not batched:
+            if self.batch_first:
                 attn_output = attn_output.squeeze(0)
-            elif not self.batch_first:
-                attn_output = attn_output.transpose(0, 1)
+            else:
+                attn_output = attn_output.squeeze(1)
 
-            return attn_output, None
+        return attn_output, None
 
 
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
@@ -248,7 +275,7 @@ def conv2d(input: torch.Tensor,
     out = _core.conv2d(
         input.data_ptr(), input.shape, utils.get_scalar_type(input.dtype),
         weight.data_ptr(), weight.shape, bias_ptr, padding_h, padding_w,
-        stride_h, stride_w, dilation_h, dilation_w, padding_mode, groups,
+        stride_h, stride_w, dilation_h, dilation_w, _core.PaddingMode(padding_mode), groups,
         algorithm)
     buffer = torch.frombuffer(
         out, dtype=input.dtype, requires_grad=requires_grad).view(
@@ -350,17 +377,16 @@ torch.library.register_autograd(
 # TODO setup training
 
 
-def mha(
-        query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
-        q_proj: torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor,
-        q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
-        v_proj_bias: torch.Tensor, k_bias: torch.Tensor, v_bias: torch.Tensor,
-        out_proj: torch.Tensor, out_proj_bias: torch.Tensor, add_zero_attn: bool, num_heads: int,
-        head_dim: int, k_dim: int, v_dim: int, embed_dim: int,
+def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+        mem_fmt: int, q_proj: torch.Tensor, k_proj: torch.Tensor,
+        v_proj: torch.Tensor, q_proj_bias: torch.Tensor,
+        k_proj_bias: torch.Tensor, v_proj_bias: torch.Tensor,
+        k_bias: torch.Tensor, v_bias: torch.Tensor, out_proj: torch.Tensor,
+        out_proj_bias: torch.Tensor, add_zero_attn: bool, num_heads: int,
+        head_dim: int, k_dim: int, v_dim: int, embed_dim: int, dropout: float,
         key_padding_mask: torch.Tensor, need_weights: bool,
         attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
-        need_to_project: bool,
-        algorithm: str) -> torch.Tensor:
+        need_to_project: bool, algorithm: str) -> torch.Tensor:
     q_ptr = query.data_ptr()
     k_ptr = key.data_ptr()
     v_ptr = value.data_ptr()
@@ -379,10 +405,11 @@ def mha(
 
     out = _core.mha(
         q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+        _core.MHAMemFormat(mem_fmt),
         query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
         v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
         k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
-        num_heads, head_dim, k_dim, v_dim, embed_dim, attn_mask_ptr,
+        num_heads, head_dim, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
     buffer = torch.frombuffer(
