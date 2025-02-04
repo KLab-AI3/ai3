@@ -181,7 +181,7 @@ target_compile_options(_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${CPP_COMPILE_OPTIONS}>
 )
 target_link_options(_core PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:${LINK_OPTIONS}>) # TODO if this works then do same LINK_OPTIONS split as compile options
+    $<$<COMPILE_LANGUAGE:CXX>:${LINK_OPTIONS}>)
 target_link_libraries(_core PRIVATE ${LIBRARIES})
 target_include_directories(_core PRIVATE ${INCLUDE_DIRECTORIES})
 target_link_directories(_core PRIVATE ${LINK_DIRECTORIES})

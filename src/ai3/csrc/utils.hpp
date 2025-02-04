@@ -207,6 +207,8 @@ namespace sample_dims {
 const int LINEAR = 1;
 const int POOL2D = 3;
 const int CONV2D = 3;
+const int MHA_NOT_PROJECTED = 3;
+const int MHA_PROJECTED = 4;
 const int ACTIVATION = -1;
 const int FLATTEN = -1;
 }; // namespace sample_dims

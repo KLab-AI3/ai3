@@ -8,9 +8,6 @@
 const std::string DEFAULT_OPT_STR = "default";
 const std::string CUSTOM_OPT_STR = "custom";
 
-inline bool is_default(std::string algo) { return algo == DEFAULT_OPT_STR; }
-inline bool is_custom(std::string algo) { return algo == CUSTOM_OPT_STR; }
-
 class Layer {
   public:
     virtual Tensor _forward_float(Tensor input) {
@@ -46,7 +43,7 @@ class MaxPool2D : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_MAXPOOL2D) {
                 return maxpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
@@ -56,7 +53,7 @@ class MaxPool2D : virtual public Layer {
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                     stride_h, stride_w, dilation_h, dilation_w, ceil_mode);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return maxpool2d_custom<dtype>(
                 std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                 stride_h, stride_w, dilation_h, dilation_w, ceil_mode);
@@ -98,7 +95,7 @@ class AvgPool2D : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_AVGPOOL2D) {
                 return avgpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
@@ -110,7 +107,7 @@ class AvgPool2D : virtual public Layer {
                     stride_h, stride_w, ceil_mode, count_include_pad,
                     divisor_override);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return avgpool2d_custom<dtype>(std::move(input), kernel_h, kernel_w,
                                            padding_h, padding_w, stride_h,
                                            stride_w, ceil_mode,
@@ -148,7 +145,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_ADAPTIVEAVGPOOL2D) {
                 return adaptiveavgpool2d_custom<dtype>(std::move(input),
                                                        output_h, output_w);
@@ -156,7 +153,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
                 return adaptiveavgpool2d::direct<dtype>(std::move(input),
                                                         output_h, output_w);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return adaptiveavgpool2d_custom<dtype>(std::move(input), output_h,
                                                    output_w);
         } else if (algorithm == "direct") {
@@ -180,13 +177,13 @@ class ReLU : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_RELU) {
                 return relu_custom<dtype>(std::move(input));
             } else {
                 return relu::direct<dtype>(std::move(input));
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return relu_custom<dtype>(std::move(input));
         } else if (algorithm == "direct") {
             return relu::direct<dtype>(std::move(input));
@@ -213,13 +210,13 @@ class Linear : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_LINEAR) {
                 return linear_custom<dtype>(std::move(input), weight, bias);
             } else {
                 return linear::gemm<dtype>(std::move(input), weight, bias);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return linear_custom<dtype>(std::move(input), weight, bias);
         } else if (algorithm == "gemm") {
             return linear::gemm<dtype>(std::move(input), weight, bias);
@@ -245,7 +242,7 @@ class Flatten : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_FLATTEN) {
                 return flatten_custom<dtype>(std::move(input), start_dim,
                                              end_dim);
@@ -253,7 +250,7 @@ class Flatten : virtual public Layer {
                 return flatten::direct<dtype>(std::move(input), start_dim,
                                               end_dim);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return flatten_custom<dtype>(std::move(input), start_dim, end_dim);
         } else if (algorithm == "direct") {
             return flatten::direct<dtype>(std::move(input), start_dim, end_dim);
@@ -290,7 +287,7 @@ class Conv2D : virtual public Layer {
     FORWARD_ALIASES
 
     template <typename dtype> Tensor forward(Tensor input) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_CONV2D) {
                 return conv2d_custom<dtype>(std::move(input), weight, bias,
                                             padding_h, padding_w, stride_h,
@@ -312,7 +309,7 @@ class Conv2D : virtual public Layer {
                                              stride_w, dilation_h, dilation_w,
                                              padding_mode, groups);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return conv2d_custom<dtype>(
                 std::move(input), weight, bias, padding_h, padding_w, stride_h,
                 stride_w, dilation_h, dilation_w, padding_mode, groups);
@@ -448,7 +445,7 @@ class MultiheadAttention : virtual public Layer {
                    std::optional<Tensor> key_padding_mask,
                    const bool need_weights, const bool average_attn_weights,
                    const bool is_causal, const bool need_to_project) {
-        if (is_default(algorithm)) {
+        if (algorithm == DEFAULT_OPT_STR) {
             if constexpr (DEFAULT_MHA) {
                 return mha_custom<dtype>(
                     std::move(query), std::move(key), std::move(value), q_proj,
@@ -464,7 +461,7 @@ class MultiheadAttention : virtual public Layer {
                     head_dim, key_padding_mask, attn_mask, need_weights,
                     average_attn_weights, is_causal, need_to_project);
             }
-        } else if (is_custom(algorithm)) {
+        } else if (algorithm == CUSTOM_OPT_STR) {
             return mha_custom<dtype>(
                 std::move(query), std::move(key), std::move(value), q_proj,
                 k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
@@ -649,6 +646,14 @@ PYBIND11_MODULE(_core, m) {
     m.def("using_cudnn", [] { return USING_CUDNN; });
     m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
     m.def("custom_opt_str", [] { return CUSTOM_OPT_STR; });
+    m.def("custom_mha_handles_inputs", [] {
+        return CUSTOM_MHA_HANDLES_INPUTS.has_value() &&
+               *CUSTOM_MHA_HANDLES_INPUTS;
+    });
+    m.def("custom_mha_project_output", [] {
+        return CUSTOM_MHA_PROJECTS_OUTPUT.has_value() &&
+               *CUSTOM_MHA_PROJECTS_OUTPUT;
+    });
 
     static_assert(sizeof(float) == 4,
                   "expected `float` to be 4 bytes (float32)");

@@ -3,6 +3,7 @@
 #include <ai3.hpp>
 #include <algos.hpp>
 #include <cublas_utils.hpp>
+#include <cuda_utils.hpp>
 #include <optional>
 
 template <typename dtype>
@@ -55,7 +56,7 @@ Tensor linear::gemm(Tensor input, const Tensor &weight,
     cublasHandle_t handle = (cublasHandle_t)Context::cublas_handle_t();
 
     const dtype alpha = 1.0, beta = 0.0;
-    cudaDataType cublas_dtype = cublas_data_type<dtype>();
+    cudaDataType cublas_dtype = cuda_data_type<dtype>();
 
     CUDA_CHECK(cudaStreamSynchronize(cpy_stream));
     CUBLAS_CHECK(cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, out_features,
