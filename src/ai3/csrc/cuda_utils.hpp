@@ -13,7 +13,7 @@ template <> inline cudaDataType cuda_data_type<double>() { return CUDA_R_64F; }
 
 #define CUDA_CHECK(status)                                                     \
     if (status != cudaSuccess) {                                               \
-        std::cerr << "cuDNN error at " << __FILE__ << ":" << __LINE__ << ": "  \
+        std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << ": "   \
                   << cudaGetErrorString(status) << std::endl;                  \
         std::exit(EXIT_FAILURE);                                               \
     }

@@ -557,12 +557,6 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
                   input_type))
             : std::nullopt;
 
-    std::cout << "v shape" << std::endl;
-    for (auto &s : v_shape) {
-        std::cout << s << std::endl;
-    }
-    std::cout << "end" << std::endl;
-
     if (input_type == ScalarType::Float32) {
         return layer.forward<float>(
             Tensor::form_tensor(q_address, q_shape, input_type),

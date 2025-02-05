@@ -157,13 +157,13 @@ class MultiheadAttention(nn.Module):
                     average_attn_weights, is_causal, False, self.algorithm)
             else:
                 q, k, v = self.handle_inputs(query, key, value)
-                attn_output = ops.ai3.mha( # TODO is it better to have two separate functions? will also make it cleaner and probably easier to understand
+                attn_output = ops.ai3.mha(  # TODO is it better to have two separate functions? will also make it cleaner and probably easier to understand
                     q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
                     self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                                          self.head_dim, self.kdim, self.vdim, self.embed_dim,
-                                          self.dropout,
+                    self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                    self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
                 if not _core.custom_mha_projects_output():
@@ -273,10 +273,12 @@ def conv2d(input: torch.Tensor,
             bias is not None and bias.requires_grad):
         requires_grad = True
     out = _core.conv2d(
-        input.data_ptr(), input.shape, utils.get_scalar_type(input.dtype),
-        weight.data_ptr(), weight.shape, bias_ptr, padding_h, padding_w,
-        stride_h, stride_w, dilation_h, dilation_w, _core.PaddingMode(padding_mode), groups,
-        algorithm)
+        input.data_ptr(),
+        input.shape, utils.get_scalar_type(input.dtype),
+        weight.data_ptr(),
+        weight.shape, bias_ptr, padding_h, padding_w, stride_h, stride_w,
+        dilation_h, dilation_w, _core.PaddingMode(padding_mode),
+        groups, algorithm)
     buffer = torch.frombuffer(
         out, dtype=input.dtype, requires_grad=requires_grad).view(
         out.shape)

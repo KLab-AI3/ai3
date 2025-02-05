@@ -25,7 +25,7 @@ def add_fail(mes):
 
 def compare_tensors(
         out_tensor, tar_tensor, mes: Optional[str] = None,
-        atol: Optional[float] = 1e-4, print_pass=True, print_diff=True) -> None:
+        atol: Optional[float] = 1e-4, print_pass=True, print_diff=True, print_same=False) -> None:
     if atol is None:
         atol = 1e-4
     assert (isinstance(tar_tensor, torch.Tensor))
@@ -60,8 +60,8 @@ def compare_tensors(
             f'Failed Test `{mes}`, Tensors have different shapes, target: {tar.shape} and output {out.shape}')
         return
 
-    different_elements = np.where(
-        np.abs(out - tar) > atol)
+    different_elements = np.where(np.abs(out - tar) > atol)
+    same_elements = np.where(np.abs(out - tar) <= atol) if print_same else None
 
     if len(different_elements[0]) == 0:
         if mes and print_pass:
@@ -74,6 +74,11 @@ def compare_tensors(
             print(
                 '  Tensors differ at the following indices:')
             for index in zip(*different_elements):
-                index = tuple(map(int, index))
-                print('  at:', index, 'target:',
-                      tar[index], 'output:', out[index])
+                print(
+                    f'  at: {tuple(map(int, index))} target: {tar[index]} output: {out[index]}')
+        if print_same:
+            print(
+                '  Tensors are the same at the following indices:')
+            for index in zip(*same_elements):
+                print(
+                    f'  at: {tuple(map(int, index))} target: {tar[index]} output: {out[index]}')
