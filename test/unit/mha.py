@@ -123,6 +123,13 @@ def main():
          bias=True,
          use_same=True,
          test_name='using same tensor')
+
+    test(num_samples=20,
+         seq_len=1000,
+         embed_dim=64,
+         num_heads=4,
+         bias=True,
+         test_name='seq_len=1000')
     exit(0)
 
     test(num_samples=None, seq_len=50, embed_dim=64, num_heads=4, kdim=32,
