@@ -3,6 +3,7 @@
 #pragma once
 
 #include <ai3.hpp>
+#include <cuda_utils.hpp>
 #include <cudnn_utils.hpp>
 
 template <typename dtype>

@@ -16,11 +16,7 @@ template <> inline cudnnDataType_t cudnn_data_type<double>() {
     return CUDNN_DATA_DOUBLE;
 }
 
-template <typename T> inline int64_t cudnn_byte_alignment();
-template <> inline int64_t cudnn_byte_alignment<float>() { return 4; }
-
-template <> inline int64_t cudnn_byte_alignment<double>() { return 8; }
-
+#ifdef DEBUG_MODE
 #define CUDNN_CHECK(status)                                                    \
     {                                                                          \
         if (status != CUDNN_STATUS_SUCCESS) {                                  \
@@ -29,3 +25,6 @@ template <> inline int64_t cudnn_byte_alignment<double>() { return 8; }
             std::exit(EXIT_FAILURE);                                           \
         }                                                                      \
     }
+#else
+#define CUDNN_CHECK(status) (void)(status)
+#endif

@@ -25,7 +25,6 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
 
-    // TODO try changing stride and setting it, then try the kernel
     if (is_proj_weights) {
         dtype *reordered_weights = new dtype[num_weights];
         // TODO make this a kernel or can it be done by changing the format
@@ -47,11 +46,6 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
         // probably best to copy always and start
         // copying the data earlier
         delete[] reordered_weights;
-        stride[0] = 1;
-        stride[1] = 1;
-        stride[2] = 1;
-        CUDNN_CHECK(cudnnSetTensorNdDescriptor(desc, cudnn_data_type<dtype>(),
-                                               WEIGHT_RANK, dim, stride));
     } else {
         CUDA_CHECK(cudaMemcpyAsync(weight_addr, host_data,
                                    num_weights * sizeof(dtype),
@@ -257,13 +251,11 @@ Tensor mha::standard(
     int *dev_q_seq_array = nullptr;
     int *dev_k_seq_array = nullptr;
     CUDA_CHECK(cudaMalloc((void **)&dev_q_seq_array, batch_size * sizeof(int)));
-    CUDA_CHECK(cudaMemcpyAsync(dev_q_seq_array, q_seq_array,
-                               batch_size * sizeof(int), cudaMemcpyHostToDevice,
-                               data_stream));
+    CUDA_CHECK(cudaMemsetAsync(dev_q_seq_array, seq_len_q,
+                               batch_size * sizeof(int), weight_stream));
     CUDA_CHECK(cudaMalloc((void **)&dev_k_seq_array, batch_size * sizeof(int)));
-    CUDA_CHECK(cudaMemcpyAsync(dev_k_seq_array, k_seq_array,
-                               batch_size * sizeof(int), cudaMemcpyHostToDevice,
-                               data_stream));
+    CUDA_CHECK(cudaMemsetAsync(dev_k_seq_array, seq_len_k,
+                               batch_size * sizeof(int), weight_stream));
 
     int dim_a[CUDNN_SEQDATA_DIM_COUNT];
     cudnnSeqDataAxis_t data_axes[CUDNN_SEQDATA_DIM_COUNT];
