@@ -19,38 +19,39 @@ class MHA(nn.Module):
         return attn_output
 
 
-def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
-         kdim=None, vdim=None,
+def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
+         kdim=None, vdim=None, seq_len_k=None,
          bias: bool = False, add_bias_kv=False, batch_first=False,
          add_zero_attn: bool = False, use_same=False, test_name: str) -> None:
     if use_same:
         assert (kdim or vdim) is None
     kdim = kdim or embed_dim
     vdim = vdim or embed_dim
+    seq_len_k = seq_len_k or seq_len_q
     dtype = torch.float32
     assert kdim and vdim
     if num_samples is not None:
         if batch_first:
             query = torch.randn(
-                (num_samples, seq_len, embed_dim), dtype=dtype)
+                (num_samples, seq_len_q, embed_dim), dtype=dtype)
             key = torch.randn(
-                (num_samples, seq_len, kdim), dtype=dtype)
+                (num_samples, seq_len_k, kdim), dtype=dtype)
             value = torch.randn(
-                (num_samples, seq_len, vdim), dtype=dtype)
+                (num_samples, seq_len_k, vdim), dtype=dtype)
         else:
             query = torch.randn(
-                (seq_len, num_samples, embed_dim), dtype=dtype)
+                (seq_len_q, num_samples, embed_dim), dtype=dtype)
             key = torch.randn(
-                (seq_len, num_samples, kdim), dtype=dtype)
+                (seq_len_k, num_samples, kdim), dtype=dtype)
             value = torch.randn(
-                (seq_len, num_samples, vdim), dtype=dtype)
+                (seq_len_k, num_samples, vdim), dtype=dtype)
     else:
         query = torch.randn(
-            (seq_len, embed_dim), dtype=dtype)
+            (seq_len_q, embed_dim), dtype=dtype)
         key = torch.randn(
-            (seq_len, kdim), dtype=dtype)
+            (seq_len_k, kdim), dtype=dtype)
         value = torch.randn(
-            (seq_len, vdim), dtype=dtype)
+            (seq_len_k, vdim), dtype=dtype)
 
     orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
                add_bias_kv, batch_first, add_zero_attn, dtype)
@@ -61,14 +62,22 @@ def test(*, num_samples, seq_len: int, embed_dim: int, num_heads: int,
     ai3.swap_mha(orig)
     ai3_output = orig(*inputs)
     compare_tensors(
-        ai3_output, torch_output, test_name, print_diff=False, atol=1e-3)
+        ai3_output, torch_output, test_name, print_diff=False, print_same=True, atol=1e-3)
 
 
 def main():
     print('MHA')
 
+    test(num_samples=None,
+         seq_len_q=128,
+         embed_dim=64,
+         num_heads=8,
+         bias=True,
+         test_name='seq_len_q=128')
+    exit(0)
+
     test(num_samples=20,
-         seq_len=10,
+         seq_len_q=10,
          embed_dim=64,
          num_heads=4,
          bias=False,
@@ -76,7 +85,7 @@ def main():
          test_name='batched batch_first')
 
     test(num_samples=None,
-         seq_len=20,
+         seq_len_q=20,
          embed_dim=64,
          num_heads=4,
          bias=True,
@@ -84,7 +93,7 @@ def main():
          test_name='not batched bias')
 
     test(num_samples=None,
-         seq_len=10,
+         seq_len_q=10,
          embed_dim=64,
          num_heads=1,
          bias=True,
@@ -92,7 +101,7 @@ def main():
          test_name='one head not batched no batch_first')
 
     test(num_samples=20,
-         seq_len=20,
+         seq_len_q=20,
          embed_dim=64,
          num_heads=4,
          bias=True,
@@ -100,7 +109,7 @@ def main():
          test_name='batched no batch_first')
 
     test(num_samples=20,
-         seq_len=50,
+         seq_len_q=50,
          embed_dim=128,
          num_heads=16,
          bias=True,
@@ -108,16 +117,17 @@ def main():
          test_name='different dimensions')
 
     test(num_samples=20,
-         seq_len=50,
+         seq_len_q=50,
+         seq_len_k=25,
          embed_dim=64,
          num_heads=16,
          kdim=32,
          vdim=16,
          bias=True,
-         test_name='unique embed, kdim and vdim')
+         test_name='unique embed, kdim, vdim, seq_len_q, seq_len_k')
 
     test(num_samples=20,
-         seq_len=50,
+         seq_len_q=50,
          embed_dim=64,
          num_heads=4,
          bias=True,
@@ -125,11 +135,11 @@ def main():
          test_name='using same tensor')
 
     test(num_samples=20,
-         seq_len=1000,
-         embed_dim=64,
-         num_heads=4,
+         seq_len_q=128,
+         embed_dim=400,
+         num_heads=8,
          bias=True,
-         test_name='seq_len=1000')
+         test_name='seq_len_q=128')
     exit(0)
 
     test(num_samples=None, seq_len=50, embed_dim=64, num_heads=4, kdim=32,

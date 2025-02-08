@@ -16,7 +16,7 @@ template <> inline cudnnDataType_t cudnn_data_type<double>() {
     return CUDNN_DATA_DOUBLE;
 }
 
-#ifdef DEBUG_MODE
+#if defined DEBUG_MODE
 #define CUDNN_CHECK(status)                                                    \
     {                                                                          \
         if (status != CUDNN_STATUS_SUCCESS) {                                  \

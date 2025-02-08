@@ -105,3 +105,9 @@ const bool USING_SYCL = true;
 #else
 const bool USING_SYCL = false;
 #endif
+
+#if defined DEBUG_MODE
+const bool DEBUG_BUILD = true;
+#else
+const bool DEBUG_BUILD = false;
+#endif

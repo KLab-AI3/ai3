@@ -11,7 +11,7 @@ template <> inline cudaDataType cuda_data_type<float>() { return CUDA_R_32F; }
 
 template <> inline cudaDataType cuda_data_type<double>() { return CUDA_R_64F; }
 
-#ifdef DEBUG_MODE
+#if defined DEBUG_MODE
 #define CUDA_CHECK(status)                                                     \
     if (status != cudaSuccess) {                                               \
         std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << ": "   \

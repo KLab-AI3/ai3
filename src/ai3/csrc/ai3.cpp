@@ -660,6 +660,7 @@ PYBIND11_MODULE(_core, m) {
     m.def("using_sycl", [] { return USING_SYCL; });
     m.def("using_cublas", [] { return USING_CUBLAS; });
     m.def("using_cudnn", [] { return USING_CUDNN; });
+    m.def("is_debug_build", [] { return DEBUG_BUILD; });
     m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
     m.def("custom_opt_str", [] { return CUSTOM_OPT_STR; });
     m.def("custom_mha_handles_inputs", [] {
