@@ -71,9 +71,9 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
         const std::optional<const Tensor> &,                                   \
         const std::optional<const Tensor> &, const Tensor &,                   \
         const std::optional<const Tensor> &, const bool, const uint,           \
-        const uint, const float, std::optional<Tensor> &,                      \
-        std::optional<Tensor> &, const bool, const bool, const bool,           \
-        const bool
+        const float, const std::optional<const Tensor> &,                      \
+        const std::optional<const Tensor> &, const bool, const bool,           \
+        const bool, const bool
 
 namespace mha {
 enum class MemFormat { NSE, SNE };

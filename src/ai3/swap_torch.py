@@ -151,7 +151,7 @@ class MultiheadAttention(nn.Module):
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
                     self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                    self.head_dim, self.kdim, self.vdim, self.embed_dim,
+                     self.kdim, self.vdim, self.embed_dim,
                     self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
@@ -161,9 +161,9 @@ class MultiheadAttention(nn.Module):
                     q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                    self.head_dim, self.kdim, self.vdim, self.embed_dim,
-                    self.dropout,
+                                          self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                                          self.kdim, self.vdim, self.embed_dim,
+                                          self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
                 if not _core.custom_mha_projects_output():
@@ -179,8 +179,8 @@ class MultiheadAttention(nn.Module):
                 query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                 self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                 bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                self.out_proj_bias, self.add_zero_attn, self.num_heads, self.
-                head_dim, self.kdim, self.vdim, self.embed_dim,
+                self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                self.kdim, self.vdim, self.embed_dim,
                 self.dropout,
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, True, self.algorithm)
@@ -190,8 +190,8 @@ class MultiheadAttention(nn.Module):
                 query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                 self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                 bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                self.out_proj_bias, self.add_zero_attn, self.num_heads, self.
-                head_dim, self.kdim, self.vdim, self.embed_dim,
+                self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                 self.kdim, self.vdim, self.embed_dim,
                 self.dropout,
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, False, self.algorithm)
@@ -385,7 +385,7 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         k_proj_bias: torch.Tensor, v_proj_bias: torch.Tensor,
         k_bias: torch.Tensor, v_bias: torch.Tensor, out_proj: torch.Tensor,
         out_proj_bias: torch.Tensor, add_zero_attn: bool, num_heads: int,
-        head_dim: int, k_dim: int, v_dim: int, embed_dim: int, dropout: float,
+        k_dim: int, v_dim: int, embed_dim: int, dropout: float,
         key_padding_mask: torch.Tensor, need_weights: bool,
         attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
         need_to_project: bool, algorithm: str) -> torch.Tensor:
@@ -411,7 +411,7 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
         v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
         k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
-        num_heads, head_dim, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
+        num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
     buffer = torch.frombuffer(

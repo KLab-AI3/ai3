@@ -27,7 +27,6 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
 
     if (is_proj_weights) {
         dtype *reordered_weights = new dtype[num_weights];
-        // TODO make this a kernel or can it be done by changing the format
         for (uint e = 0; e < embed_dim; ++e) {
             for (uint h = 0; h < num_heads; ++h) {
                 for (uint d = 0; d < head_dim; ++d) {
@@ -53,22 +52,23 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     }
 }
 
-// TODO head_dim can be removed if it is just embed_q / num_heads
-// TODO why isn't key_padding_mask const
 template <typename dtype>
-Tensor mha::standard(
-    Tensor query, Tensor key, Tensor value, const mha::MemFormat input_format,
-    const Tensor &q_proj, const Tensor &k_proj, const Tensor &v_proj,
-    const std::optional<const Tensor> &q_bias_in,
-    const std::optional<const Tensor> &k_bias_in,
-    const std::optional<const Tensor> &v_bias_in,
-    const std::optional<const Tensor> &kbias,
-    const std::optional<const Tensor> &vbias, const Tensor &out_proj,
-    const std::optional<const Tensor> &out_bias, const bool add_zero_attn,
-    const uint num_heads, const uint head_dim, const float dropout,
-    std::optional<Tensor> &key_padding_mask, std::optional<Tensor> &attn_mask,
-    const bool need_weights, const bool average_attn_weights,
-    const bool is_causal, const bool need_to_project_input) {
+Tensor mha::standard(Tensor query, Tensor key, Tensor value,
+                     const mha::MemFormat input_format, const Tensor &q_proj,
+                     const Tensor &k_proj, const Tensor &v_proj,
+                     const std::optional<const Tensor> &q_bias_in,
+                     const std::optional<const Tensor> &k_bias_in,
+                     const std::optional<const Tensor> &v_bias_in,
+                     const std::optional<const Tensor> &kbias,
+                     const std::optional<const Tensor> &vbias,
+                     const Tensor &out_proj,
+                     const std::optional<const Tensor> &out_bias,
+                     const bool add_zero_attn, const uint num_heads,
+                     const float dropout,
+                     const std::optional<const Tensor> &key_padding_mask,
+                     const std::optional<const Tensor> &attn_mask,
+                     const bool need_weights, const bool average_attn_weights,
+                     const bool is_causal, const bool need_to_project_input) {
     ensure_same_type(query, key, value);
     errs::bail_if(need_weights, "no support for attention weights");
     errs::bail_if(need_weights and average_attn_weights,
@@ -239,7 +239,6 @@ Tensor mha::standard(
                             out_bias->data, 0, 0, 0, false, weight_stream);
     }
 
-    // TODO use a cudaMemSet here instead of host allocations and copying
     int *q_seq_array = new int[batch_size]();
     std::fill(q_seq_array, q_seq_array + batch_size, seq_len_q);
     int *k_seq_array = new int[batch_size]();
