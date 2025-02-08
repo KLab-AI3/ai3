@@ -4,7 +4,6 @@
 #include <cuda_utils.hpp>
 #include <cudnn.h>
 #include <cudnn_utils.hpp>
-#include <iterator>
 
 const int WEIGHT_RANK = 3;
 
@@ -48,6 +47,11 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
         // probably best to copy always and start
         // copying the data earlier
         delete[] reordered_weights;
+        stride[0] = 1;
+        stride[1] = 1;
+        stride[2] = 1;
+        CUDNN_CHECK(cudnnSetTensorNdDescriptor(desc, cudnn_data_type<dtype>(),
+                                               WEIGHT_RANK, dim, stride));
     } else {
         CUDA_CHECK(cudaMemcpyAsync(weight_addr, host_data,
                                    num_weights * sizeof(dtype),

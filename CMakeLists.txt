@@ -92,7 +92,7 @@ set(USE_SYCL no)
 if(SYCL_FOUND)
     message(STATUS "Found SYCL")
     set(USE_SYCL YES)
-    set(CMAKE_CXX_COMPILER "${SYCL_COMPILER}") # TODO remove the unsupported option  -fno-fat-lto-objects
+    set(CMAKE_CXX_COMPILER "${SYCL_COMPILER}")
 
     list(APPEND INCLUDE_DIRECTORIES ${SYCL_INCLUDE_DIR} ${SYCL_SYCL_INCLUDE_DIR})
     list(APPEND LINK_DIRECTORIES ${SYCL_LIBRARY_DIR})
