@@ -68,14 +68,6 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
 def main():
     print('MHA')
 
-    test(num_samples=None,
-         seq_len_q=128,
-         embed_dim=64,
-         num_heads=8,
-         bias=True,
-         test_name='seq_len_q=128')
-    exit(0)
-
     test(num_samples=20,
          seq_len_q=10,
          embed_dim=64,
@@ -135,11 +127,11 @@ def main():
          test_name='using same tensor')
 
     test(num_samples=20,
-         seq_len_q=128,
+         seq_len_q=1000,
          embed_dim=400,
          num_heads=8,
          bias=True,
-         test_name='seq_len_q=128')
+         test_name='seq_len_q=1000')
     exit(0)
 
     test(num_samples=None, seq_len=50, embed_dim=64, num_heads=4, kdim=32,

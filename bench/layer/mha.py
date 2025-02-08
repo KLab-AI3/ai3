@@ -1,3 +1,4 @@
+import copy
 import torch
 from bench import predict_show_time
 from torch import nn
@@ -50,23 +51,28 @@ def run_on(*, num_samples: int, seq_len: int, embed_dim: int, num_heads: int,
     orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
                add_bias_kv, batch_first, add_zero_attn, dtype)
     inputs = (query, key, value) if not use_same else (query, query, query)
-
-    orig_out = predict_show_time(
-            orig, inputs, f'pytorch \
-                    num_heads: {num_heads}, bias: {bias},\
-                    q: {num_samples},{seq_len},{embed_dim},\
-                    k: {num_samples},{seq_len},{kdim},\
-                    v: {num_samples},{seq_len},{kdim}')
+    orig_cpy = copy.deepcopy(orig)
     ai3.swap_mha(orig)
-    out = predict_show_time(orig, inputs, f'ai3 \
-                    num_heads: {num_heads}, bias: {bias},\
-                    q: {num_samples},{seq_len},{embed_dim},\
-                    k: {num_samples},{seq_len},{kdim},\
-                    v: {num_samples},{seq_len},{kdim}')
+    out = predict_show_time(orig, inputs, f'ai3: '
+                    f'num_heads: {num_heads}, bias: {bias},'
+                    f'q: {num_samples},{seq_len},{embed_dim}, '
+                    f'k: {num_samples},{seq_len},{kdim}, '
+                    f'v: {num_samples},{seq_len},{kdim}')
+    orig_out = predict_show_time(
+            orig_cpy, inputs, f'pytorch: '
+                    f'num_heads: {num_heads}, bias: {bias}, '
+                    f'q: {num_samples},{seq_len},{embed_dim}, '
+                    f'k: {num_samples},{seq_len},{kdim}, '
+                    f'v: {num_samples},{seq_len},{kdim}')
+    out = predict_show_time(orig, inputs, f'ai3:'
+                    f'num_heads: {num_heads}, bias: {bias}, '
+                    f'q: {num_samples},{seq_len},{embed_dim}, '
+                    f'k: {num_samples},{seq_len},{kdim}, '
+                    f'v: {num_samples},{seq_len},{kdim}')
 
-    compare_tensors(out, orig_out, print_pass=False, atol=1e-3)
+    compare_tensors(out, orig_out, print_pass=False, print_diff=True, atol=1e-3)
 
 print('Multihead Attention')
 run_on(num_samples=N, seq_len=100, embed_dim=64, num_heads=4, bias=True)
 print('-------------')
-run_on(num_samples=N, seq_len=500, embed_dim=64, num_heads=4, bias=True)
+run_on(num_samples=N, seq_len=2000, embed_dim=64, num_heads=4, bias=True)

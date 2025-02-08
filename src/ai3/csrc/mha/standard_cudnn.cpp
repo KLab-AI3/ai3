@@ -7,6 +7,7 @@
 
 const int WEIGHT_RANK = 3;
 
+// TODO do a kernel for reordering
 template <typename dtype>
 void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                   cudnnMultiHeadAttnWeightKind_t kind, uint num_weights,
@@ -40,10 +41,6 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
         CUDA_CHECK(cudaMemcpy(weight_addr, reordered_weights,
                               num_weights * sizeof(dtype),
                               cudaMemcpyHostToDevice));
-        // TODO need to handle this being deleted
-        // immediately but being used for async
-        // probably best to copy always and start
-        // copying the data earlier
         delete[] reordered_weights;
     } else {
         CUDA_CHECK(cudaMemcpyAsync(weight_addr, host_data,
@@ -121,8 +118,6 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
         o_shape = {seq_len_q, batch_size, embed_o};
     }
     Tensor output(std::move(o_shape), query.scalar_type);
-    std::fill((dtype *)(output.data), (dtype *)(output.data) + output.count(),
-              1);
 
     cudnnHandle_t handle = (cudnnHandle_t)Context::cudnn_handle_t();
     cudaStream_t weight_stream;
@@ -255,11 +250,7 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     CUDA_CHECK(cudaMemcpyAsync(dev_q_seq_array, q_seq_array,
                                batch_size * sizeof(int), cudaMemcpyHostToDevice,
                                data_stream));
-    // CUDA_CHECK(cudaMemsetAsync(dev_q_seq_array, seq_len_q,
-    //                            batch_size * sizeof(int), weight_stream));
     CUDA_CHECK(cudaMalloc((void **)&dev_k_seq_array, batch_size * sizeof(int)));
-    // CUDA_CHECK(cudaMemsetAsync(dev_k_seq_array, seq_len_k,
-    //                            batch_size * sizeof(int), weight_stream));
     CUDA_CHECK(cudaMemcpyAsync(dev_k_seq_array, k_seq_array,
                                batch_size * sizeof(int), cudaMemcpyHostToDevice,
                                data_stream));
@@ -309,11 +300,6 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     CUDA_CHECK(cudaMemcpyAsync(dev_k, key.data, k_num_elem * sizeof(dtype),
                                cudaMemcpyHostToDevice, data_stream));
     CUDA_CHECK(cudaMemcpyAsync(dev_v, value.data, v_num_elem * sizeof(dtype),
-                               cudaMemcpyHostToDevice, data_stream));
-    CUDA_CHECK(cudaMemcpyAsync(dev_o, output.data,
-                               o_num_elem *
-                                   sizeof(dtype), // TODO don't forget to delete
-                                                  // this and the fill on output
                                cudaMemcpyHostToDevice, data_stream));
     CUDA_CHECK(cudaStreamSynchronize(weight_stream));
     CUDA_CHECK(cudaStreamSynchronize(data_stream));

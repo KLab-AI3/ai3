@@ -671,9 +671,4 @@ PYBIND11_MODULE(_core, m) {
         return CUSTOM_MHA_PROJECTS_OUTPUT.has_value() &&
                *CUSTOM_MHA_PROJECTS_OUTPUT;
     });
-
-    static_assert(sizeof(float) == 4,
-                  "expected `float` to be 4 bytes (float32)");
-    static_assert(sizeof(double) == 8,
-                  "expected `double` to be 8 bytes (float64)");
 }
