@@ -32,6 +32,9 @@ class PaddingMode(Enum):
 class MHAMemFormat(Enum):
     NSE: int
     SNE: int
+    NSHD: int
+    SNHD: int
+
 
 class ScalarType(Enum):
     Float32: int

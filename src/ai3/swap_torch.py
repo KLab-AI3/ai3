@@ -13,7 +13,7 @@ from packaging import version
 MIN_TORCH_VERSION = '2.4'
 
 errors.bail_if(version.parse(torch.__version__) < version.parse(
-    MIN_TORCH_VERSION), 'requires torch >= 2.4')
+    MIN_TORCH_VERSION), f'requires torch >= {MIN_TORCH_VERSION}')
 
 
 class Conv2D(nn.Module):
@@ -92,45 +92,56 @@ class MultiheadAttention(nn.Module):
         self.out_proj_weight = orig.out_proj.weight
         self.out_proj_bias = orig.out_proj.bias
 
-    # TODO alter these to fix the assumed batch first doing the non handling inputs case
     def handle_inputs(self, query: torch.Tensor, key: torch.Tensor, value:
                       torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
-                                             torch.Tensor]:
-        batch_size, tgt_len, _ = query.shape
+                                             torch.Tensor, _core.MHAMemFormat]:
+        batch_dim = 0 if self.batch_first else 1
+        len_dim = int(not batch_dim)
+        batch_size = query.shape[batch_dim]
+        tgt_len = query.shape[len_dim]
 
         q = F.linear(query, self.q_proj_weight, self.bias_q_in)
         k = F.linear(key, self.k_proj_weight, self.bias_k_in)
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
         if self.bias_k is not None and self.bias_v is not None:
-            k = torch.cat([k, self.bias_k.repeat(batch_size, 1, 1)], dim=1)
-            v = torch.cat([v, self.bias_v.repeat(batch_size, 1, 1)], dim=1)
+            repeat = (batch_size, 1, 1) if self.batch_first else (1, batch_size, 1)
+            k = torch.cat([k, self.bias_k.repeat(repeat)], dim=len_dim)
+            v = torch.cat([v, self.bias_v.repeat(repeat)], dim=len_dim)
 
         if self.add_zero_attn:
-            zero_attn_shape = (batch_size, 1, k.shape[2])
-            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=1)
-            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=1)
+            zero_attn_shape = (batch_size, 1, k.shape[2]) if self.batch_first else (1, batch_size, k.shape[2])
+            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=len_dim)
+            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=len_dim)
 
-        src_len = k.shape[1]
+        src_len = k.shape[len_dim]
 
-        q = q.view(batch_size, tgt_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
-        k = k.view(batch_size, src_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
-        v = v.view(batch_size, src_len, self.num_heads,
-                   self.head_dim).transpose(1, 2)
-        return q, k, v
+        len_dim = 1 if self.batch_first else 0
+        first_two_q = (batch_size, tgt_len) if self.batch_first else (tgt_len, batch_size)
+        first_two_kv = (batch_size, src_len) if self.batch_first else (src_len, batch_size)
+        mem_fmt = _core.MHAMemFormat.NSHD if self.batch_first else _core.MHAMemFormat.SNHD
+        q = q.view(*first_two_q, self.num_heads,
+                   self.head_dim)
+        k = k.view(*first_two_kv, self.num_heads,
+                   self.head_dim)
+        v = v.view(*first_two_kv, self.num_heads,
+                   self.head_dim)
+        return q, k, v, _core.MHAMemFormat(mem_fmt)
 
     def handle_outputs(
-            self, attn_batch_first_output: torch.Tensor, batch_size: int,
+            self, attn_output: torch.Tensor, batch_size: int,
             tgt_len: int, embed_dim: int) -> torch.Tensor:
-        attn_batch_first_output = attn_batch_first_output.transpose(
+        attn_output = attn_output.transpose(
             1, 2).view(
             batch_size * tgt_len, embed_dim)
-        attn_batch_first_output = F.linear(
-            attn_batch_first_output, self.out_proj_weight, self.out_proj_bias)
-        return attn_batch_first_output.view(
+        attn_output = F.linear(
+            attn_output, self.out_proj_weight, self.out_proj_bias)
+        attn_output = attn_output.view(
             batch_size, tgt_len, embed_dim)
+        if not self.batch_first:
+            attn_output = attn_output.transpose(0,1)
+        return attn_output
+
 
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
@@ -156,8 +167,8 @@ class MultiheadAttention(nn.Module):
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
             else:
-                q, k, v = self.handle_inputs(query, key, value)
-                attn_output = ops.ai3.mha(  # TODO is it better to have two separate functions? will also make it cleaner and probably easier to understand
+                q, k, v, mem_fmt = self.handle_inputs(query, key, value)
+                attn_output = ops.ai3.mha(
                     q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
@@ -167,7 +178,9 @@ class MultiheadAttention(nn.Module):
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
                 if not _core.custom_mha_projects_output():
-                    batch_size, tgt_len, embed_dim = query.shape
+                    batch_size = query.shape[0 if self.batch_first else 1]
+                    tgt_len = query.shape[1 if self.batch_first else 0]
+                    embed_dim = query.shape[2]
                     attn_output = self.handle_outputs(
                         attn_output, batch_size, tgt_len, embed_dim)
         elif not (self.bias_k is not None or self.bias_v is not None or
@@ -185,17 +198,28 @@ class MultiheadAttention(nn.Module):
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, True, self.algorithm)
         else:
-            q, k, v = self.handle_inputs(query, key, value)
-            attn_output = ops.ai3.mha(
-                query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                 self.kdim, self.vdim, self.embed_dim,
-                self.dropout,
-                key_padding_mask, need_weights, attn_mask,
-                average_attn_weights, is_causal, False, self.algorithm)
+            q, k, v,mem_fmt = self.handle_inputs(query, key, value)
+            if mem_fmt == _core.MHAMemFormat.SNHD:
+                q, k, v = (x.permute(1, 2, 0, 3) for x in (q,k,v))
+            elif mem_fmt == _core.MHAMemFormat.NSHD:
+                q, k, v = (x.transpose(1, 2) for x in (q,k,v))
+            attn_output = F.scaled_dot_product_attention(q, k, v)
+            # attn_output = ops.ai3.mha(
+            #     query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+            #     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+            #     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+            #     self.out_proj_bias, self.add_zero_attn, self.num_heads,
+            #      self.kdim, self.vdim, self.embed_dim,
+            #     self.dropout,
+            #     key_padding_mask, need_weights, attn_mask,
+            #     average_attn_weights, is_causal, False, self.algorithm)
+            # batch_size, tgt_len, embed_dim = query.shape
+            batch_size = query.shape[0 if self.batch_first else 1]
+            tgt_len = query.shape[1 if self.batch_first else 0]
+            embed_dim = query.shape[2]
 
+            attn_output = self.handle_outputs(
+                attn_output, batch_size, tgt_len, embed_dim)
         if not batched:
             if self.batch_first:
                 attn_output = attn_output.squeeze(0)

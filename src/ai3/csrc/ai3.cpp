@@ -650,6 +650,8 @@ PYBIND11_MODULE(_core, m) {
     py::enum_<mha::MemFormat>(m, "MHAMemFormat")
         .value("NSE", mha::MemFormat::NSE)
         .value("SNE", mha::MemFormat::SNE)
+        .value("NSHD", mha::MemFormat::NSHD)
+        .value("SNHD", mha::MemFormat::SNHD)
         .export_values();
     py::enum_<ScalarType>(m, "ScalarType")
         .value("Float32", ScalarType::Float32)

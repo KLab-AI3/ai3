@@ -67,7 +67,6 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
 
 def main():
     print('MHA')
-
     test(num_samples=20,
          seq_len_q=10,
          embed_dim=64,
@@ -132,14 +131,17 @@ def main():
          num_heads=8,
          bias=True,
          test_name='seq_len_q=1000')
-    exit(0)
 
-    test(num_samples=None, seq_len=50, embed_dim=64, num_heads=4, kdim=32,
-         vdim=16, bias=False, add_bias_kv=True,
+    test(num_samples=None, seq_len_q=50, embed_dim=64, num_heads=4, kdim=32,
+         vdim=16, bias=False, add_bias_kv=True, batch_first=True,
+         test_name='not batched different unique embed, k, v, with add_bias_kv')
+
+    test(num_samples=None, seq_len_q=50, embed_dim=64, num_heads=4, kdim=32,
+         vdim=16, bias=False, add_bias_kv=True, batch_first=False,
          test_name='not batched different unique embed, k, v, with add_bias_kv')
 
     test(num_samples=3,
-         seq_len=40,
+         seq_len_q=40,
          embed_dim=48,
          num_heads=4,
          kdim=20,
@@ -148,23 +150,15 @@ def main():
          add_bias_kv=True,
          add_zero_attn=True,
          test_name='batched, unique, bias, add_bias_kv, add_zero_attn')
+
     test(num_samples=None,
-         seq_len=40,
+         seq_len_q=40,
          embed_dim=48,
          num_heads=4,
          bias=False,
          add_bias_kv=True,
          add_zero_attn=False,
          test_name='not unique, add_bias_kv')
-    test(num_samples=3,
-         seq_len=40,
-         embed_dim=48,
-         num_heads=4,
-         kdim=20,
-         vdim=16,
-         bias=True,
-         add_bias_kv=False,
-         test_name='unique, with bias')
 
 
 if __name__ == '__main__':

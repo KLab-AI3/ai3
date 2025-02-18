@@ -76,7 +76,7 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
         const bool, const bool
 
 namespace mha {
-enum class MemFormat { NSE, SNE };
+enum class MemFormat { NSE, SNE, NSHD, SNHD };
 
 template <typename dtype> Tensor standard(MHA_PARAMS);
 
