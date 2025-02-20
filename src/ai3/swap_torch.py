@@ -199,27 +199,26 @@ class MultiheadAttention(nn.Module):
                 average_attn_weights, is_causal, True, self.algorithm)
         else:
             q, k, v,mem_fmt = self.handle_inputs(query, key, value)
-            if mem_fmt == _core.MHAMemFormat.SNHD:
-                q, k, v = (x.permute(1, 2, 0, 3) for x in (q,k,v))
-            elif mem_fmt == _core.MHAMemFormat.NSHD:
-                q, k, v = (x.transpose(1, 2) for x in (q,k,v))
-            attn_output = F.scaled_dot_product_attention(q, k, v)
-            # attn_output = ops.ai3.mha(
-            #     query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-            #     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-            #     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-            #     self.out_proj_bias, self.add_zero_attn, self.num_heads,
-            #      self.kdim, self.vdim, self.embed_dim,
-            #     self.dropout,
-            #     key_padding_mask, need_weights, attn_mask,
-            #     average_attn_weights, is_causal, False, self.algorithm)
-            # batch_size, tgt_len, embed_dim = query.shape
-            batch_size = query.shape[0 if self.batch_first else 1]
-            tgt_len = query.shape[1 if self.batch_first else 0]
-            embed_dim = query.shape[2]
-
-            attn_output = self.handle_outputs(
-                attn_output, batch_size, tgt_len, embed_dim)
+            # if mem_fmt == _core.MHAMemFormat.SNHD:
+            #     q, k, v = (x.permute(1, 2, 0, 3) for x in (q,k,v))
+            # elif mem_fmt == _core.MHAMemFormat.NSHD:
+            #     q, k, v = (x.transpose(1, 2) for x in (q,k,v))
+            # attn_output = F.scaled_dot_product_attention(q, k, v)
+            attn_output = ops.ai3.mha(
+                q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
+                self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                 self.kdim, self.vdim, self.embed_dim,
+                self.dropout,
+                key_padding_mask, need_weights, attn_mask,
+                average_attn_weights, is_causal, False, self.algorithm)
+            # batch_size = query.shape[0 if self.batch_first else 1]
+            # tgt_len = query.shape[1 if self.batch_first else 0]
+            # embed_dim = query.shape[2]
+            #
+            # attn_output = self.handle_outputs(
+            #     attn_output, batch_size, tgt_len, embed_dim)
         if not batched:
             if self.batch_first:
                 attn_output = attn_output.squeeze(0)

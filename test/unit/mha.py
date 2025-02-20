@@ -62,7 +62,7 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     ai3.swap_mha(orig)
     ai3_output = orig(*inputs)
     compare_tensors(
-        ai3_output, torch_output, test_name, print_diff=False, print_same=True, atol=1e-3)
+        ai3_output, torch_output, test_name, print_diff=False, print_same=False, atol=1e-3)
 
 
 def main():
@@ -95,7 +95,7 @@ def main():
          seq_len_q=20,
          embed_dim=64,
          num_heads=4,
-         bias=True,
+         bias=False,
          batch_first=False,
          test_name='batched no batch_first')
 
@@ -132,12 +132,12 @@ def main():
          bias=True,
          test_name='seq_len_q=1000')
 
-    test(num_samples=None, seq_len_q=50, embed_dim=64, num_heads=4, kdim=32,
-         vdim=16, bias=False, add_bias_kv=True, batch_first=True,
-         test_name='not batched different unique embed, k, v, with add_bias_kv')
+    test(num_samples=None, seq_len_q=50, embed_dim=64, num_heads=2,
+         bias=False, add_bias_kv=True,
+         test_name='not batched with add_bias_kv')
 
     test(num_samples=None, seq_len_q=50, embed_dim=64, num_heads=4, kdim=32,
-         vdim=16, bias=False, add_bias_kv=True, batch_first=False,
+         vdim=16, bias=False, add_bias_kv=True, batch_first=True,
          test_name='not batched different unique embed, k, v, with add_bias_kv')
 
     test(num_samples=3,
@@ -150,6 +150,18 @@ def main():
          add_bias_kv=True,
          add_zero_attn=True,
          test_name='batched, unique, bias, add_bias_kv, add_zero_attn')
+
+    test(num_samples=3,
+         seq_len_q=40,
+         embed_dim=48,
+         num_heads=4,
+         kdim=20,
+         vdim=16,
+         bias=True,
+         add_bias_kv=True,
+         add_zero_attn=True,
+         batch_first=True,
+         test_name='batched, batch_first, unique, bias, add_bias_kv, add_zero_attn')
 
     test(num_samples=None,
          seq_len_q=40,

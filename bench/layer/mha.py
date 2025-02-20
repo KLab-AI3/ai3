@@ -1,10 +1,8 @@
-import copy
 import torch
 from bench import predict_show_time
 from torch import nn
 import ai3
 from test import compare_tensors
-from copy import deepcopy
 
 N = 100
 
@@ -51,19 +49,13 @@ def run_on(*, num_samples: int, seq_len: int, embed_dim: int, num_heads: int,
     orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
                add_bias_kv, batch_first, add_zero_attn, dtype)
     inputs = (query, key, value) if not use_same else (query, query, query)
-    orig_cpy = copy.deepcopy(orig)
-    ai3.swap_mha(orig)
-    out = predict_show_time(orig, inputs, f'ai3: '
-                    f'num_heads: {num_heads}, bias: {bias},'
-                    f'q: {num_samples},{seq_len},{embed_dim}, '
-                    f'k: {num_samples},{seq_len},{kdim}, '
-                    f'v: {num_samples},{seq_len},{kdim}')
     orig_out = predict_show_time(
-            orig_cpy, inputs, f'pytorch: '
+            orig, inputs, f'pytorch: '
                     f'num_heads: {num_heads}, bias: {bias}, '
                     f'q: {num_samples},{seq_len},{embed_dim}, '
                     f'k: {num_samples},{seq_len},{kdim}, '
                     f'v: {num_samples},{seq_len},{kdim}')
+    ai3.swap_mha(orig)
     out = predict_show_time(orig, inputs, f'ai3:'
                     f'num_heads: {num_heads}, bias: {bias}, '
                     f'q: {num_samples},{seq_len},{embed_dim}, '
