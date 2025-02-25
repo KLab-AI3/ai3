@@ -7,50 +7,74 @@
 
 const int WEIGHT_RANK = 3;
 
-// TODO do a kernel for reordering
 template <typename dtype>
 void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                   cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
-                  uint num_weights, size_t size_weights,
-                  cudnnTensorDescriptor_t desc, void *dev_w, void *host_data,
-                  uint num_heads, uint head_dim, uint embed_dim, bool identity,
-                  cudaStream_t &stream) {
+                  size_t size_all_weights, cudnnTensorDescriptor_t desc,
+                  void *dev_w, void *host_data, uint first_dim, uint second_dim,
+                  uint third_dim, bool identity, cudaStream_t stream) {
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
     dtype *weight_addr = nullptr;
 
     CUDNN_CHECK(cudnnGetMultiHeadAttnWeights(handle, attn_desc, kind,
-                                             size_weights, dev_w, desc,
+                                             size_all_weights, dev_w, desc,
                                              (void **)&weight_addr));
 
     cudnnDataType_t data_type_unused;
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
 
+    uint num_weights = first_dim * second_dim * third_dim;
     assert(ndim == WEIGHT_RANK);
     if (is_proj_weights) {
-        dtype *reordered_weights = new dtype[num_weights];
+        uint num_heads = first_dim;
+        uint head_dim = second_dim;
+        uint embed_dim = third_dim;
         if (identity) {
-            std::fill(reordered_weights, reordered_weights + num_weights, 0);
-            uint min_dim = std::min(embed_dim, num_heads * head_dim);
-            for (uint i = 0; i < min_dim; ++i) {
-                reordered_weights[i * num_heads * head_dim + i] =
-                    1; // TODO cudaMemset2D
-            }
+            fill_identity_call(weight_addr, embed_dim, num_heads * head_dim,
+                               stream);
+            CUDA_CHECK(
+                cudaStreamSynchronize(stream)); // TODO remove the extra syncs
         } else {
-            // TODO use the cudaMemcpy2DAsync function, I think it can just
-            // be one call don't need to do this reordering here
+            dtype *reordered_weights = new dtype[num_weights];
+            dtype *check_weights = new dtype[num_weights]();
             for (uint e = 0; e < embed_dim; ++e) {
                 for (uint d = 0; d < head_dim * num_heads; ++d) {
                     reordered_weights[e * head_dim * num_heads + d] =
                         ((dtype *)host_data)[d * embed_dim + e];
                 }
             }
+            dtype *buffer = nullptr;
+            CUDA_CHECK(
+                cudaMalloc((void **)&buffer, num_weights * sizeof(dtype)));
+            CUDA_CHECK(cudaMemcpy(buffer, host_data,
+                                  num_weights * sizeof(dtype),
+                                  cudaMemcpyHostToDevice));
+            transpose_call(weight_addr, buffer, head_dim * num_heads, embed_dim,
+                           stream);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            CUDA_CHECK(cudaMemcpy(check_weights, weight_addr,
+                                  num_weights * sizeof(dtype),
+                                  cudaMemcpyDeviceToHost));
+            for (uint i = 0; i < 10; ++i) {
+                printf("reordered_weights[%u] = %f, check_weights[%u] = %f\n ",
+                       i, reordered_weights[i], i, check_weights[i]);
+            }
+            for (uint i = 0; i < num_weights; ++i) {
+                assert(reordered_weights[i] == check_weights[i]);
+            }
+            // this one doesn't work
+            CUDA_CHECK(cudaMemcpy(weight_addr, check_weights,
+                                  num_weights * sizeof(dtype),
+                                  cudaMemcpyHostToDevice));
+            // this one works
+            CUDA_CHECK(cudaMemcpy(weight_addr, reordered_weights,
+                                  num_weights * sizeof(dtype),
+                                  cudaMemcpyHostToDevice));
+            delete[] reordered_weights;
+            delete[] check_weights;
         }
-        CUDA_CHECK(cudaMemcpy(weight_addr, reordered_weights,
-                              num_weights * sizeof(dtype),
-                              cudaMemcpyHostToDevice));
-        delete[] reordered_weights;
     } else {
         if (identity) {
             CUDA_CHECK(cudaMemsetAsync(weight_addr, 0,
@@ -156,8 +180,7 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     Tensor output(std::move(o_shape), query.scalar_type);
 
     cudnnHandle_t handle = (cudnnHandle_t)Context::cudnn_handle_t();
-    cudaStream_t weight_stream;
-    cudaStream_t data_stream;
+    StreamSwapper ss = StreamSwapper();
     cudnnAttnDescriptor_t attn_desc;
     cudnnDropoutDescriptor_t drop_desc;
     cudnnSeqDataDescriptor_t q_desc;
@@ -168,8 +191,6 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     cudnnDataType_t comp_prec = cudnn_data_type<dtype>();
 
     CUDNN_CHECK(cudnnCreate(&handle));
-    CUDA_CHECK(cudaStreamCreate(&weight_stream));
-    CUDA_CHECK(cudaStreamCreate(&data_stream));
     CUDNN_CHECK(cudnnCreateAttnDescriptor(&attn_desc));
     if (dropout > 0) {
         CUDNN_CHECK(cudnnCreateDropoutDescriptor(&drop_desc));
@@ -240,43 +261,38 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     cudnnTensorDescriptor_t weight_desc;
     if (size_weights > 0) {
         CUDA_CHECK(cudaMalloc((void **)&dev_w, size_weights));
-        // TODO after alloc weights if don't need to project
-        // then memsetasync then sync before init
-        // init just writes the ones where needed
         CUDNN_CHECK(cudnnCreateTensorDescriptor(&weight_desc));
         init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true,
-                            q_num_weights, size_weights, weight_desc, dev_w,
-                            q_proj.data, num_heads, proj_q, embed_q,
-                            !need_to_project_input, weight_stream);
+                            size_weights, weight_desc, dev_w, q_proj.data,
+                            num_heads, proj_q, embed_q, !need_to_project_input,
+                            ss());
         init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_K_WEIGHTS, true,
-                            k_num_weights, size_weights, weight_desc, dev_w,
-                            k_proj.data, num_heads, proj_k, embed_k,
-                            !need_to_project_input, weight_stream);
+                            size_weights, weight_desc, dev_w, k_proj.data,
+                            num_heads, proj_k, embed_k, !need_to_project_input,
+                            ss());
         init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true,
-                            v_num_weights, size_weights, weight_desc, dev_w,
-                            v_proj.data, num_heads, proj_v, embed_v,
-                            !need_to_project_input, weight_stream);
+                            size_weights, weight_desc, dev_w, v_proj.data,
+                            num_heads, proj_v, embed_v, !need_to_project_input,
+                            ss());
         init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true,
-                            o_num_weights, size_weights, weight_desc, dev_w,
-                            out_proj.data, 1, proj_o, embed_o, false,
-                            weight_stream);
+                            size_weights, weight_desc, dev_w, out_proj.data, 1,
+                            proj_o, embed_o, false, ss());
         if (proj_bias) {
             init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_BIASES,
-                                false, q_bias_len, size_weights, weight_desc,
-                                dev_w, q_bias_in->data, 0, 0, 0,
-                                !need_to_project_input, weight_stream);
+                                false, size_weights, weight_desc, dev_w,
+                                q_bias_in->data, q_bias_len, 1, 1,
+                                !need_to_project_input, ss());
             init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_K_BIASES,
-                                false, k_bias_len, size_weights, weight_desc,
-                                dev_w, k_bias_in->data, 0, 0, 0,
-                                !need_to_project_input, weight_stream);
+                                false, size_weights, weight_desc, dev_w,
+                                k_bias_in->data, k_bias_len, 1, 1,
+                                !need_to_project_input, ss());
             init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_V_BIASES,
-                                false, v_bias_len, size_weights, weight_desc,
-                                dev_w, v_bias_in->data, 0, 0, 0,
-                                !need_to_project_input, weight_stream);
+                                false, size_weights, weight_desc, dev_w,
+                                v_bias_in->data, k_bias_len, 1, 1,
+                                !need_to_project_input, ss());
             init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_BIASES,
-                                false, o_bias_len, size_weights, weight_desc,
-                                dev_w, out_bias->data, 0, 0, 0, false,
-                                weight_stream);
+                                false, size_weights, weight_desc, dev_w,
+                                out_bias->data, o_bias_len, 1, 1, false, ss());
         }
     }
     if (size_wkspace > 0) {
@@ -297,12 +313,12 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     CUDA_CHECK(cudaMalloc((void **)&dev_q_seq_array, batch_size * sizeof(int)));
     CUDA_CHECK(cudaMemcpyAsync(dev_q_seq_array, q_seq_array,
                                batch_size * sizeof(int), cudaMemcpyHostToDevice,
-                               data_stream));
+                               ss()));
 
     CUDA_CHECK(cudaMalloc((void **)&dev_k_seq_array, batch_size * sizeof(int)));
     CUDA_CHECK(cudaMemcpyAsync(dev_k_seq_array, k_seq_array,
                                batch_size * sizeof(int), cudaMemcpyHostToDevice,
-                               data_stream));
+                               ss()));
 
     int dim_a[CUDNN_SEQDATA_DIM_COUNT];
     cudnnSeqDataAxis_t data_axes[CUDNN_SEQDATA_DIM_COUNT];
@@ -347,24 +363,28 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
         batch_size, k_seq_array, nullptr));
 
     CUDA_CHECK(cudaMemcpyAsync(dev_q, query.data, q_num_elem * sizeof(dtype),
-                               cudaMemcpyHostToDevice, data_stream));
+                               cudaMemcpyHostToDevice, ss()));
     CUDA_CHECK(cudaMemcpyAsync(dev_k, key.data, k_num_elem * sizeof(dtype),
-                               cudaMemcpyHostToDevice, data_stream));
+                               cudaMemcpyHostToDevice, ss()));
     CUDA_CHECK(cudaMemcpyAsync(dev_v, value.data, v_num_elem * sizeof(dtype),
-                               cudaMemcpyHostToDevice, data_stream));
-    CUDA_CHECK(cudaStreamSynchronize(weight_stream));
-    CUDA_CHECK(cudaStreamSynchronize(data_stream));
+                               cudaMemcpyHostToDevice, ss()));
 
+    ss.sync();
     CUDNN_CHECK(cudnnMultiHeadAttnForward(
-        handle, attn_desc, -1, lo_win_idx, hi_win_idx, dev_q_seq_array,
-        dev_k_seq_array, q_desc, dev_q, nullptr, k_desc, dev_k, v_desc, dev_v,
-        o_desc, dev_o, size_weights, size_weights > 0 ? dev_w : nullptr,
+        handle, attn_desc, -1, lo_win_idx,                //
+        hi_win_idx,                                       //
+        dev_q_seq_array, dev_k_seq_array,                 //
+        q_desc, dev_q,                                    //
+        nullptr,                                          //
+        k_desc, dev_k,                                    //
+        v_desc, dev_v,                                    //
+        o_desc, dev_o,                                    //
+        size_weights, size_weights > 0 ? dev_w : nullptr, //
         size_wkspace, dev_wkspace, 0, nullptr));
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpyAsync(output.data, dev_o, o_num_elem * sizeof(dtype),
-                               cudaMemcpyDeviceToHost, data_stream));
+                               cudaMemcpyDeviceToHost, ss()));
 
-    CUDA_CHECK(cudaStreamDestroy(weight_stream));
     CUDNN_CHECK(cudnnDestroyAttnDescriptor(attn_desc));
     if (dropout > 0) {
         CUDNN_CHECK(cudnnDestroyDropoutDescriptor(drop_desc));
@@ -396,8 +416,7 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     delete[] q_seq_array;
     delete[] k_seq_array;
 
-    CUDA_CHECK(cudaStreamSynchronize(data_stream));
-    CUDA_CHECK(cudaStreamDestroy(data_stream));
+    ss.sync();
 
     return output;
 }

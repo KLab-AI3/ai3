@@ -62,7 +62,7 @@ def run_on(*, num_samples: int, seq_len: int, embed_dim: int, num_heads: int,
                     f'k: {num_samples},{seq_len},{kdim}, '
                     f'v: {num_samples},{seq_len},{kdim}')
 
-    compare_tensors(out, orig_out, print_pass=False, print_diff=True, atol=1e-3)
+    compare_tensors(out, orig_out, print_pass=False, print_diff=False, atol=1e-3)
 
 print('Multihead Attention')
 run_on(num_samples=N, seq_len=100, embed_dim=64, num_heads=4, bias=True)

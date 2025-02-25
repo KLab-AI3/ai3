@@ -1,8 +1,6 @@
 [project]
 name = "aithree"
 readme = "README.rst"
-homepage = "https://github.com/KLab-ai3/ai3"
-documentation = "https://klab-ai3.github.io/ai3"
 description = "Enables Algorithmic Selection and Customization in Deep Neural Networks"
 authors = [
 {name = "Timothy Cronin"}
@@ -22,12 +20,16 @@ dependencies = [
     "packaging"
 ]
 
+[project.urls]
+homepage = "https://github.com/KLab-ai3/ai3"
+documentation = "https://klab-ai3.github.io/ai3"
+
 [build-system]
 requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
-cmake.build-type = "Debug"
+cmake.build-type = "Release"
 wheel.packages = ["src/ai3"]
 sdist.cmake = false
 cmake.define = {SKBUILD_PROJECT_NAME = "ai3"}
