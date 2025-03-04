@@ -1,3 +1,4 @@
+# TODO update the documentation so it gets the right project.urls location
 [project]
 name = "aithree"
 readme = "README.rst"
@@ -33,9 +34,9 @@ cmake.build-type = "Release"
 wheel.packages = ["src/ai3"]
 sdist.cmake = false
 cmake.define = {SKBUILD_PROJECT_NAME = "ai3"}
-
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 sdist.include = ["src/ai3/_version.py"]
+build.tool-args = ["-j12", "-l13"]
 
 [tool.setuptools_scm]
 write_to = "src/ai3/_version.py"
