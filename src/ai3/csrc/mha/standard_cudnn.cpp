@@ -6,13 +6,15 @@
 #include <cudnn_utils.hpp>
 
 const int WEIGHT_RANK = 3;
+const int NUM_PROJECTION_WEIGHTS = 4;
 
 template <typename dtype>
-void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
-                  cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
-                  size_t size_all_weights, cudnnTensorDescriptor_t desc,
-                  void *dev_w, void *host_data, uint first_dim, uint second_dim,
-                  uint third_dim, bool identity, cudaStream_t stream) {
+dtype *init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
+                    cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
+                    size_t size_all_weights, cudnnTensorDescriptor_t desc,
+                    void *dev_w, void *host_data, uint first_dim,
+                    uint second_dim, uint third_dim, bool identity,
+                    cudaStream_t stream) {
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
     dtype *weight_addr = nullptr;
@@ -27,6 +29,7 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
 
     uint num_weights = first_dim * second_dim * third_dim;
     assert(ndim == WEIGHT_RANK);
+    dtype *buffer = nullptr;
     if (is_proj_weights) {
         uint num_heads = first_dim;
         uint head_dim = second_dim;
@@ -34,8 +37,6 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
         if (identity) {
             fill_identity_call(weight_addr, embed_dim, num_heads * head_dim,
                                stream);
-            CUDA_CHECK(
-                cudaStreamSynchronize(stream)); // TODO remove the extra syncs
         } else {
             dtype *reordered_weights = new dtype[num_weights];
             dtype *check_weights = new dtype[num_weights]();
@@ -45,35 +46,13 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                         ((dtype *)host_data)[d * embed_dim + e];
                 }
             }
-            dtype *buffer = nullptr;
             CUDA_CHECK(
                 cudaMalloc((void **)&buffer, num_weights * sizeof(dtype)));
-            CUDA_CHECK(cudaMemcpy(buffer, host_data,
-                                  num_weights * sizeof(dtype),
-                                  cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync(buffer, host_data,
+                                       num_weights * sizeof(dtype),
+                                       cudaMemcpyHostToDevice, stream));
             transpose_call(weight_addr, buffer, head_dim * num_heads, embed_dim,
                            stream);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
-            CUDA_CHECK(cudaMemcpy(check_weights, weight_addr,
-                                  num_weights * sizeof(dtype),
-                                  cudaMemcpyDeviceToHost));
-            for (uint i = 0; i < 10; ++i) {
-                printf("reordered_weights[%u] = %f, check_weights[%u] = %f\n ",
-                       i, reordered_weights[i], i, check_weights[i]);
-            }
-            for (uint i = 0; i < num_weights; ++i) {
-                assert(reordered_weights[i] == check_weights[i]);
-            }
-            // this one doesn't work
-            CUDA_CHECK(cudaMemcpy(weight_addr, check_weights,
-                                  num_weights * sizeof(dtype),
-                                  cudaMemcpyHostToDevice));
-            // this one works
-            CUDA_CHECK(cudaMemcpy(weight_addr, reordered_weights,
-                                  num_weights * sizeof(dtype),
-                                  cudaMemcpyHostToDevice));
-            delete[] reordered_weights;
-            delete[] check_weights;
         }
     } else {
         if (identity) {
@@ -85,6 +64,7 @@ void init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                                        cudaMemcpyHostToDevice, stream));
         }
     }
+    return buffer;
 }
 
 template <typename dtype>
@@ -200,8 +180,6 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     CUDNN_CHECK(cudnnCreateSeqDataDescriptor(&v_desc));
     CUDNN_CHECK(cudnnCreateSeqDataDescriptor(&o_desc));
 
-    uint *loWinIdx = nullptr;
-    uint *hiWinIdx = nullptr;
     unsigned attn_mode = proj_bias ? CUDNN_ATTN_ENABLE_PROJ_BIASES
                                    : CUDNN_ATTN_DISABLE_PROJ_BIASES;
 
@@ -259,24 +237,25 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     assert(size_weights / sizeof(dtype) == total_num_weights);
 
     cudnnTensorDescriptor_t weight_desc;
+    dtype *buffers[NUM_PROJECTION_WEIGHTS] = {nullptr};
     if (size_weights > 0) {
         CUDA_CHECK(cudaMalloc((void **)&dev_w, size_weights));
         CUDNN_CHECK(cudnnCreateTensorDescriptor(&weight_desc));
-        init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true,
-                            size_weights, weight_desc, dev_w, q_proj.data,
-                            num_heads, proj_q, embed_q, !need_to_project_input,
-                            ss());
-        init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_K_WEIGHTS, true,
-                            size_weights, weight_desc, dev_w, k_proj.data,
-                            num_heads, proj_k, embed_k, !need_to_project_input,
-                            ss());
-        init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true,
-                            size_weights, weight_desc, dev_w, v_proj.data,
-                            num_heads, proj_v, embed_v, !need_to_project_input,
-                            ss());
-        init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true,
-                            size_weights, weight_desc, dev_w, out_proj.data, 1,
-                            proj_o, embed_o, false, ss());
+        buffers[0] = init_weights<dtype>(
+            handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true, size_weights,
+            weight_desc, dev_w, q_proj.data, num_heads, proj_q, embed_q,
+            !need_to_project_input, ss());
+        buffers[1] = init_weights<dtype>(
+            handle, attn_desc, CUDNN_MH_ATTN_K_WEIGHTS, true, size_weights,
+            weight_desc, dev_w, k_proj.data, num_heads, proj_k, embed_k,
+            !need_to_project_input, ss());
+        buffers[2] = init_weights<dtype>(
+            handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true, size_weights,
+            weight_desc, dev_w, v_proj.data, num_heads, proj_v, embed_v,
+            !need_to_project_input, ss());
+        buffers[3] = init_weights<dtype>(
+            handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true, size_weights,
+            weight_desc, dev_w, out_proj.data, 1, proj_o, embed_o, false, ss());
         if (proj_bias) {
             init_weights<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_BIASES,
                                 false, size_weights, weight_desc, dev_w,
@@ -370,6 +349,9 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
                                cudaMemcpyHostToDevice, ss()));
 
     ss.sync();
+    for (int i = 0; i < NUM_PROJECTION_WEIGHTS; i++) {
+        CUDA_CHECK(cudaFree(buffers[i]));
+    }
     CUDNN_CHECK(cudnnMultiHeadAttnForward(
         handle, attn_desc, -1, lo_win_idx,                //
         hi_win_idx,                                       //

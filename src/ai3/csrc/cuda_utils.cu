@@ -2,9 +2,6 @@
 #include <cuda_utils.cuh>
 #include <cuda_utils.hpp>
 
-const int TILE_DIM = 32;
-const int BLOCK_ROWS = 8;
-
 template <typename dtype>
 __global__ void fill_identity(dtype *data, const int rows, const int columns) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -18,49 +15,32 @@ __global__ void fill_identity(dtype *data, const int rows, const int columns) {
 template <typename dtype>
 void fill_identity_call(dtype *data, const int rows, const int columns,
                         cudaStream_t stream) {
-    int threads = TILE_DIM * BLOCK_ROWS;
+    int threads = 256;
     int blocks = (rows * columns + threads - 1) / threads;
     fill_identity<dtype><<<blocks, threads, 0, stream>>>(data, rows, columns);
 }
 
 template <typename dtype>
-__global__ void transpose(dtype *output, dtype *input, const int rows,
-                          const int columns) {
-    __shared__ dtype tile[TILE_DIM][TILE_DIM + 1];
+__global__ void transpose(dtype *output, dtype *input, const int in_rows,
+                          const int in_columns) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < in_rows * in_columns) {
+        const int d = idx / in_columns;
+        const int e = idx % in_columns;
 
-    int x = blockIdx.x * TILE_DIM + threadIdx.x;
-    int y = blockIdx.y * TILE_DIM + threadIdx.y;
-
-    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
-        if (x < columns && (y + j) < rows) {
-            tile[threadIdx.y + j][threadIdx.x] = input[(y + j) * columns + x];
-        }
-    }
-
-    __syncthreads();
-
-    x = blockIdx.y * TILE_DIM + threadIdx.x;
-    y = blockIdx.x * TILE_DIM + threadIdx.y;
-
-    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
-        if (x < rows && (y + j) < columns) {
-            output[(y + j) * rows + x] = tile[threadIdx.x][threadIdx.y + j];
-        }
+        output[e * in_rows + d] = input[d * in_columns + e];
     }
 }
 
-// TODO change the int param names based on if it is for input or output
 template <typename dtype>
-void transpose_call(dtype *output, dtype *input, const int rows,
-                    const int columns, cudaStream_t stream) {
-    int tiles_y = (rows + TILE_DIM - 1) / TILE_DIM;
-    int tiles_x = (columns + TILE_DIM - 1) / TILE_DIM;
-    int total_blocks = tiles_x * tiles_y;
+void transpose_call(dtype *output, dtype *input, const int in_rows,
+                    const int in_columns, cudaStream_t stream) {
+    const int total_elements = in_rows * in_columns;
+    const int block = 256;
+    const int grid = (total_elements + block - 1) / block;
 
-    dim3 block(TILE_DIM, BLOCK_ROWS);
-    dim3 grid(total_blocks);
-
-    transpose<dtype><<<grid, block, 0, stream>>>(output, input, rows, columns);
+    transpose<dtype>
+        <<<grid, block, 0, stream>>>(output, input, in_rows, in_columns);
 }
 
 StreamSwapper::StreamSwapper() : current(0) {
