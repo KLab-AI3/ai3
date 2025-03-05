@@ -1,14 +1,14 @@
-.. _repo: https://github.com/KLab-ai3/ai3
+.. _repo: 
 .. |repo| replace:: **Source Code**
-.. _script: https://github.com/KLab-ai3/ai3/tree/main/bench/gather.py
+.. _script: /tree/main/bench/gather.py
 .. |script| replace:: *script*
-.. _custom: https://github.com/KLab-ai3/ai3/tree/main/src/ai3/custom
+.. _custom: /tree/main/src/ai3/custom
 .. |custom| replace:: *custom*
-.. _custom_cmake: https://github.com/KLab-ai3/ai3/tree/main/cmake/custom.cmake
+.. _custom_cmake: /tree/main/cmake/custom.cmake
 .. |custom_cmake| replace:: *custom.cmake*
-.. _model_zoo: https://github.com/KLab-ai3/ai3/tree/main/model_zoo/models.py
+.. _model_zoo: /tree/main/model_zoo/models.py
 .. |model_zoo| replace:: *model_zoo*
-.. _doc: https://klab-ai3.github.io/ai3
+.. _doc: 
 .. |doc| replace:: **Documentation**
 .. |name| replace:: *ai3*
 .. |pkg_name| replace:: *aithree*
