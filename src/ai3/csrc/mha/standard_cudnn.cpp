@@ -69,22 +69,21 @@ dtype *init_weights(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
 }
 
 template <typename dtype>
-Tensor mha::standard(Tensor query, Tensor key, Tensor value,
-                     const mha::MemFormat input_format, const Tensor &q_proj,
-                     const Tensor &k_proj, const Tensor &v_proj,
-                     const std::optional<const Tensor> &q_bias_in,
-                     const std::optional<const Tensor> &k_bias_in,
-                     const std::optional<const Tensor> &v_bias_in,
-                     const std::optional<const Tensor> &kbias,
-                     const std::optional<const Tensor> &vbias,
-                     const Tensor &out_proj,
-                     const std::optional<const Tensor> &out_bias,
-                     const bool add_zero_attn, const uint num_heads,
-                     const float dropout,
-                     const std::optional<const Tensor> &key_padding_mask,
-                     const std::optional<const Tensor> &attn_mask,
-                     const bool need_weights, const bool average_attn_weights,
-                     const bool is_causal, const bool need_to_project_input) {
+std::array<std::optional<Tensor>, mha::NUM_GRAD>
+operate(Tensor query, Tensor key, Tensor value,
+        const mha::MemFormat input_format, const Tensor &q_proj,
+        const Tensor &k_proj, const Tensor &v_proj,
+        const std::optional<const Tensor> &q_bias_in,
+        const std::optional<const Tensor> &k_bias_in,
+        const std::optional<const Tensor> &v_bias_in,
+        const std::optional<const Tensor> &k_bias,
+        const std::optional<const Tensor> &v_bias, const Tensor &out_proj,
+        const std::optional<const Tensor> &out_bias, const bool add_zero_attn,
+        const uint num_heads, const float dropout,
+        const std::optional<const Tensor> &key_padding_mask,
+        const std::optional<const Tensor> &attn_mask, const bool need_weights,
+        const bool average_attn_weights, const bool is_causal,
+        const bool need_to_project_input, const bool compute_gradients) {
     ensure_same_type(query, key, value);
     errs::bail_if(need_weights, "no support for attention weights");
     errs::bail_if(need_weights and average_attn_weights,
@@ -386,7 +385,6 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     CUDA_CHECK(cudaFree(dev_q));
     CUDA_CHECK(cudaFree(dev_k));
     CUDA_CHECK(cudaFree(dev_v));
-    CUDA_CHECK(cudaFree(dev_o));
     if (dropout > 0) {
         CUDA_CHECK(cudaFree(dropout_buf));
     }
@@ -398,15 +396,78 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
     }
     CUDA_CHECK(cudaFree(dev_q_seq_array));
     CUDA_CHECK(cudaFree(dev_k_seq_array));
+    ss.sync();
+    CUDA_CHECK(cudaFree(dev_o));
+
     delete[] hi_win_idx;
     delete[] lo_win_idx;
     delete[] q_seq_array;
     delete[] k_seq_array;
 
-    ss.sync();
+    std::array<std::optional<Tensor>, mha::NUM_GRAD> out{};
+    out[0] = std::optional<Tensor>(std::move(output));
+    return out;
+}
 
-    return output;
+template <typename dtype>
+Tensor mha::standard(Tensor query, Tensor key, Tensor value,
+                     const mha::MemFormat input_format, const Tensor &q_proj,
+                     const Tensor &k_proj, const Tensor &v_proj,
+                     const std::optional<const Tensor> &q_bias_in,
+                     const std::optional<const Tensor> &k_bias_in,
+                     const std::optional<const Tensor> &v_bias_in,
+                     const std::optional<const Tensor> &k_bias,
+                     const std::optional<const Tensor> &v_bias,
+                     const Tensor &out_proj,
+                     const std::optional<const Tensor> &out_bias,
+                     const bool add_zero_attn, const uint num_heads,
+                     const float dropout,
+                     const std::optional<const Tensor> &key_padding_mask,
+                     const std::optional<const Tensor> &attn_mask,
+                     const bool need_weights, const bool average_attn_weights,
+                     const bool is_causal, const bool need_to_project_input) {
+    return std::move(*operate<dtype>(
+        std::move(query), std::move(key), std::move(value), input_format,
+        q_proj, k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
+        out_proj, out_bias, add_zero_attn, num_heads, dropout, key_padding_mask,
+        attn_mask, need_weights, average_attn_weights, is_causal,
+        need_to_project_input, false)[0]);
+}
+
+template <typename dtype>
+std::array<Tensor, mha::NUM_GRAD> mha::standard_backward(
+    Tensor query, Tensor key, Tensor value, const mha::MemFormat input_format,
+    const Tensor &q_proj, const Tensor &k_proj, const Tensor &v_proj,
+    const std::optional<const Tensor> &q_bias_in,
+    const std::optional<const Tensor> &k_bias_in,
+    const std::optional<const Tensor> &v_bias_in,
+    const std::optional<const Tensor> &k_bias,
+    const std::optional<const Tensor> &v_bias, const Tensor &out_proj,
+    const std::optional<const Tensor> &out_bias, const bool add_zero_attn,
+    const uint num_heads, const float dropout,
+    const std::optional<const Tensor> &key_padding_mask,
+    const std::optional<const Tensor> &attn_mask, const bool need_weights,
+    const bool average_attn_weights, const bool is_causal,
+    const bool need_to_project_input) {
+    std::array<std::optional<Tensor>, mha::NUM_GRAD> out = operate<dtype>(
+        std::move(query), std::move(key), std::move(value), input_format,
+        q_proj, k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
+        out_proj, out_bias, add_zero_attn, num_heads, dropout, key_padding_mask,
+        attn_mask, need_weights, average_attn_weights, is_causal,
+        need_to_project_input, true);
+
+    std::array<Tensor, mha::NUM_GRAD> gradients;
+    for (uint i = 0; i < mha::NUM_GRAD; ++i) {
+        errs::bail_if(!out[i].has_value(), "expected ", mha::NUM_GRAD,
+                      " tensors but tensor ", i, " is missing");
+        gradients[i] = std::move(*out[i]);
+    }
+    return gradients;
 }
 
 template Tensor mha::standard<float>(MHA_PARAMS);
 template Tensor mha::standard<double>(MHA_PARAMS);
+template std::array<Tensor, mha::NUM_GRAD>
+    mha::standard_backward<float>(MHA_PARAMS);
+template std::array<Tensor, mha::NUM_GRAD>
+    mha::standard_backward<double>(MHA_PARAMS);

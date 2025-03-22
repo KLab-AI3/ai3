@@ -77,8 +77,12 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
 
 namespace mha {
 enum class MemFormat { NSE, SNE, NSHD, SNHD };
+const uint NUM_GRAD =
+    11; // TODO put documentation here on the order and make sure it shows
 
 template <typename dtype> Tensor standard(MHA_PARAMS);
+template <typename dtype>
+std::array<Tensor, NUM_GRAD> standard_backward(MHA_PARAMS);
 
 } // namespace mha
 
