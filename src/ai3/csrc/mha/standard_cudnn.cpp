@@ -4,6 +4,7 @@
 #include <cuda_utils.hpp>
 #include <cudnn.h>
 #include <cudnn_utils.hpp>
+#include <numeric>
 
 const int WEIGHT_RANK = 3;
 const int NUM_PROJECTION_WEIGHTS = 4;
@@ -90,8 +91,8 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
                   "no support for average attention weights");
     errs::bail_if(key_padding_mask.has_value(),
                   "no support for key padding mask");
-    errs::bail_if(attn_mask.has_value(), "no support for attention mask");
-    errs::bail_if(is_causal, "no support for causal");
+    errs::bail_if(!is_causal && attn_mask.has_value(),
+                  "no support for attention mask");
 
     uint batch_size, seq_len_q, embed_q, seq_len_k, embed_k, embed_v, proj_q,
         proj_k, proj_v, embed_o, proj_o;
@@ -285,7 +286,11 @@ Tensor mha::standard(Tensor query, Tensor key, Tensor value,
 
     int *lo_win_idx = new int[seq_len_q]();
     int *hi_win_idx = new int[seq_len_q];
-    std::fill(hi_win_idx, hi_win_idx + seq_len_q, seq_len_k);
+    if (is_causal) {
+        std::iota(hi_win_idx, hi_win_idx + seq_len_q, 1);
+    } else {
+        std::fill(hi_win_idx, hi_win_idx + seq_len_q, seq_len_k);
+    }
 
     int *dev_q_seq_array = nullptr;
     int *dev_k_seq_array = nullptr;

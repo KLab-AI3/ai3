@@ -14,15 +14,17 @@ class MHA(nn.Module):
             add_bias_kv=add_bias_kv, batch_first=batch_first,
             add_zero_attn=add_zero_attn, dtype=dtype)
 
-    def forward(self, q, k, v):
-        attn_output, _ = self.attn(q, k, v, need_weights=False)
+    def forward(self, q, k, v, *, is_causal=False, attn_mask=None):
+        attn_output, _ = self.attn(q, k, v, need_weights=False,
+                                   attn_mask=attn_mask, is_causal=is_causal)
         return attn_output
 
 
 def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
          kdim=None, vdim=None, seq_len_k=None,
          bias: bool = False, add_bias_kv=False, batch_first=False,
-         add_zero_attn: bool = False, use_same=False, test_name: str) -> None:
+         add_zero_attn: bool = False, is_causal=False, use_same=False,
+         test_name: str) -> None:
     if use_same:
         assert (kdim or vdim) is None
     kdim = kdim or embed_dim
@@ -56,11 +58,16 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     orig = MHA(embed_dim, num_heads, kdim, vdim, bias,
                add_bias_kv, batch_first, add_zero_attn, dtype)
     inputs = (query, key, value) if not use_same else (query, query, query)
+    attn_mask = None
+    if is_causal:
+        attn_mask = torch.triu(
+            torch.ones(seq_len_q, seq_len_k, dtype=torch.bool),
+            diagonal=1)
 
-    torch_output = orig(*inputs)
+    torch_output = orig(*inputs, is_causal=is_causal, attn_mask=attn_mask)
 
     ai3.swap_mha(orig)
-    ai3_output = orig(*inputs)
+    ai3_output = orig(*inputs, is_causal=is_causal, attn_mask=attn_mask)
     compare_tensors(ai3_output, torch_output, test_name,
                     print_diff=False, print_same=False, atol=1e-3)
 
@@ -165,6 +172,17 @@ def main():
          add_bias_kv=True,
          add_zero_attn=False,
          test_name='not unique, add_bias_kv')
+
+    test(num_samples=20,
+         seq_len_q=100,
+         seq_len_k=50,
+         embed_dim=64,
+         num_heads=16,
+         kdim=32,
+         vdim=16,
+         bias=True,
+         is_causal=True,
+         test_name='causal')
 
 
 if __name__ == '__main__':
