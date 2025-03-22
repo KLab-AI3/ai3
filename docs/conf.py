@@ -43,8 +43,9 @@ with open(os.path.join(parent_directory, 'pyproject.toml'), 'rb') as f:
     pyproject_data = tomllib.load(f)
 
 pkg_name = pyproject_data.get('project', {}).get('name', '')
-repo = pyproject_data.get('project', {}).get('homepage', '')
-docs = pyproject_data.get('project', {}).get('documentation', '')
+repo = pyproject_data.get('project', {}).get('urls', {}).get('homepage', '')
+docs = pyproject_data.get('project', {}).get('urls', {}).get('documentation', '')
+assert pkg_name and repo and docs
 repo_main = repo + '/tree/main'
 repo_src = repo_main + '/src/ai3'
 repo_csrc = repo_src + '/csrc'
