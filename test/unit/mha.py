@@ -61,8 +61,8 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
 
     ai3.swap_mha(orig)
     ai3_output = orig(*inputs)
-    compare_tensors(
-        ai3_output, torch_output, test_name, print_diff=False, print_same=False, atol=1e-3)
+    compare_tensors(ai3_output, torch_output, test_name,
+                    print_diff=False, print_same=False, atol=1e-3)
 
 
 def main():
@@ -151,17 +151,11 @@ def main():
          add_zero_attn=True,
          test_name='batched, unique, bias, add_bias_kv, add_zero_attn')
 
-    test(num_samples=3,
-         seq_len_q=40,
-         embed_dim=48,
-         num_heads=4,
-         kdim=20,
-         vdim=16,
-         bias=True,
-         add_bias_kv=True,
-         add_zero_attn=True,
-         batch_first=True,
-         test_name='batched, batch_first, unique, bias, add_bias_kv, add_zero_attn')
+    test(
+        num_samples=3, seq_len_q=40, embed_dim=48, num_heads=4, kdim=20,
+        vdim=16, bias=True, add_bias_kv=True, add_zero_attn=True,
+        batch_first=True,
+        test_name='batched, batch_first, unique, bias, add_bias_kv, add_zero_attn')
 
     test(num_samples=None,
          seq_len_q=40,

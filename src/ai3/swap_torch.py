@@ -105,20 +105,28 @@ class MultiheadAttention(nn.Module):
         v = F.linear(value, self.v_proj_weight, self.bias_v_in)
 
         if self.bias_k is not None and self.bias_v is not None:
-            repeat = (batch_size, 1, 1) if self.batch_first else (1, batch_size, 1)
+            repeat = (
+                batch_size, 1, 1) if self.batch_first else (
+                1, batch_size, 1)
             k = torch.cat([k, self.bias_k.repeat(repeat)], dim=len_dim)
             v = torch.cat([v, self.bias_v.repeat(repeat)], dim=len_dim)
 
         if self.add_zero_attn:
-            zero_attn_shape = (batch_size, 1, k.shape[2]) if self.batch_first else (1, batch_size, k.shape[2])
+            zero_attn_shape = (
+                batch_size, 1, k.shape[2]) if self.batch_first else (
+                1, batch_size, k.shape[2])
             k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=len_dim)
             v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=len_dim)
 
         src_len = k.shape[len_dim]
 
         len_dim = 1 if self.batch_first else 0
-        first_two_q = (batch_size, tgt_len) if self.batch_first else (tgt_len, batch_size)
-        first_two_kv = (batch_size, src_len) if self.batch_first else (src_len, batch_size)
+        first_two_q = (
+            batch_size, tgt_len) if self.batch_first else (
+            tgt_len, batch_size)
+        first_two_kv = (
+            batch_size, src_len) if self.batch_first else (
+            src_len, batch_size)
         mem_fmt = _core.MHAMemFormat.NSHD if self.batch_first else _core.MHAMemFormat.SNHD
         q = q.view(*first_two_q, self.num_heads,
                    self.head_dim)
@@ -139,9 +147,8 @@ class MultiheadAttention(nn.Module):
         attn_output = attn_output.view(
             batch_size, tgt_len, embed_dim)
         if not self.batch_first:
-            attn_output = attn_output.transpose(0,1)
+            attn_output = attn_output.transpose(0, 1)
         return attn_output
-
 
     def forward(self, query, key, value, key_padding_mask=None,
                 need_weights=True, attn_mask=None, average_attn_weights=True,
@@ -162,7 +169,7 @@ class MultiheadAttention(nn.Module):
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
                     self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                     self.kdim, self.vdim, self.embed_dim,
+                    self.kdim, self.vdim, self.embed_dim,
                     self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
@@ -172,9 +179,9 @@ class MultiheadAttention(nn.Module):
                     q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                     self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                     bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                                          self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                                          self.kdim, self.vdim, self.embed_dim,
-                                          self.dropout,
+                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                    self.kdim, self.vdim, self.embed_dim,
+                    self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
                 if not _core.custom_mha_projects_output():
@@ -198,7 +205,7 @@ class MultiheadAttention(nn.Module):
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, True, self.algorithm)
         else:
-            q, k, v,mem_fmt = self.handle_inputs(query, key, value)
+            q, k, v, mem_fmt = self.handle_inputs(query, key, value)
             # if mem_fmt == _core.MHAMemFormat.SNHD:
             #     q, k, v = (x.permute(1, 2, 0, 3) for x in (q,k,v))
             # elif mem_fmt == _core.MHAMemFormat.NSHD:
@@ -209,7 +216,7 @@ class MultiheadAttention(nn.Module):
                 self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
                 bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
                 self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                 self.kdim, self.vdim, self.embed_dim,
+                self.kdim, self.vdim, self.embed_dim,
                 self.dropout,
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, False, self.algorithm)

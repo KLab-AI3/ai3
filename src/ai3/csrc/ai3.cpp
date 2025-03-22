@@ -53,7 +53,7 @@ class MaxPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_MAXPOOL2D) {
+            if constexpr (CUSTOM_DEFAULT_MAXPOOL2D) {
                 return maxpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                     stride_h, stride_w, dilation_h, dilation_w, ceil_mode);
@@ -105,7 +105,7 @@ class AvgPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_AVGPOOL2D) {
+            if constexpr (CUSTOM_DEFAULT_AVGPOOL2D) {
                 return avgpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                     stride_h, stride_w, ceil_mode, count_include_pad,
@@ -155,7 +155,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_ADAPTIVEAVGPOOL2D) {
+            if constexpr (CUSTOM_DEFAULT_ADAPTIVEAVGPOOL2D) {
                 return adaptiveavgpool2d_custom<dtype>(std::move(input),
                                                        output_h, output_w);
             } else {
@@ -187,7 +187,7 @@ class ReLU : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_RELU) {
+            if constexpr (CUSTOM_DEFAULT_RELU) {
                 return relu_custom<dtype>(std::move(input));
             } else {
                 return relu::direct<dtype>(std::move(input));
@@ -220,7 +220,7 @@ class Linear : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_LINEAR) {
+            if constexpr (CUSTOM_DEFAULT_LINEAR) {
                 return linear_custom<dtype>(std::move(input), weight, bias);
             } else {
                 return linear::gemm<dtype>(std::move(input), weight, bias);
@@ -252,7 +252,7 @@ class Flatten : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_FLATTEN) {
+            if constexpr (CUSTOM_DEFAULT_FLATTEN) {
                 return flatten_custom<dtype>(std::move(input), start_dim,
                                              end_dim);
             } else {
@@ -297,7 +297,7 @@ class Conv2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_CONV2D) {
+            if constexpr (CUSTOM_DEFAULT_CONV2D) {
                 return conv2d_custom<dtype>(std::move(input), weight, bias,
                                             padding_h, padding_w, stride_h,
                                             stride_w, dilation_h, dilation_w,
@@ -458,7 +458,7 @@ class MultiheadAttention : virtual public Layer {
                    const bool need_weights, const bool average_attn_weights,
                    const bool is_causal, const bool need_to_project) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (DEFAULT_MHA) {
+            if constexpr (CUSTOM_DEFAULT_MHA) {
                 return mha_custom<dtype>(
                     std::move(query), std::move(key), std::move(value),
                     input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,

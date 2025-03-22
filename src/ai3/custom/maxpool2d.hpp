@@ -5,7 +5,7 @@
 /**
  * @DEFAULT_BOOL{MaxPool2D}
  */
-const bool DEFAULT_MAXPOOL2D = false;
+const bool CUSTOM_DEFAULT_MAXPOOL2D = false;
 
 /**
  * @CUSTOM_OP{MaxPool2D,maxpool2d}

@@ -5,7 +5,7 @@
 /**
  * @DEFAULT_BOOL{AvgPool2D}
  */
-const bool DEFAULT_AVGPOOL2D = false;
+const bool CUSTOM_DEFAULT_AVGPOOL2D = false;
 
 /**
  * @CUSTOM_OP{AvgPool2D,avgpool2d}

@@ -5,7 +5,7 @@
 /**
  * @DEFAULT_BOOL{Flatten}
  */
-const bool DEFAULT_FLATTEN = false;
+const bool CUSTOM_DEFAULT_FLATTEN = false;
 
 /**
  * @CUSTOM_OP{Flatten,flatten}

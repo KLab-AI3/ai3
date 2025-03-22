@@ -7,7 +7,7 @@
 /**
  * @DEFAULT_BOOL{ReLU}
  */
-const bool DEFAULT_MHA = false;
+const bool CUSTOM_DEFAULT_MHA = false;
 /**
  * @ingroup custom
  * Whether the custom implementation handles inputs (projects, concats bias,
