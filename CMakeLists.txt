@@ -56,7 +56,7 @@ find_package(CUDAToolkit)
 set(USE_CUBLAS NO)
 set(USE_CUDNN NO)
 if(CUDAToolkit_FOUND)
-    message(WARNING "Found Toolkit")
+    message(STATUS  "Found Toolkit")
     list(APPEND CXX_PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED TRUE
