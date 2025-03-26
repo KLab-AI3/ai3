@@ -1,8 +1,5 @@
 from . import backward, compile, opcheck, train, run
 import sys
-import ai3  # to initialize the torch.ops.ai3
-_ = ai3
-
 
 if len(sys.argv) > 1:
     for arg in sys.argv[1:]:

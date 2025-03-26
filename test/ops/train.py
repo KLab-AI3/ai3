@@ -83,8 +83,8 @@ def conv2d():
             for param, param_swapped in zip(
                     model.named_parameters(),
                     model_swapped.named_parameters()):
-                assert (param[1].grad)
-                assert (param_swapped[1].grad)
+                assert (param[1].grad is not None)
+                assert (param_swapped[1].grad is not None)
                 if not torch.allclose(
                         param[1].grad, param_swapped[1].grad, atol=atol):
                     print(
