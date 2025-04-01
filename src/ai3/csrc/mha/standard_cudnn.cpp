@@ -14,8 +14,8 @@ template <typename dtype>
 dtype *dev_dw_to_host(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                       cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
                       size_t size_all_weights, cudnnTensorDescriptor_t desc,
-                      void *dev_dw, void *host_data, uint first_dim,
-                      uint second_dim, uint third_dim, cudaStream_t stream) {
+                      void *dev_dw, void *host_data, uint num_heads,
+                      uint head_dim, uint embed_dim, cudaStream_t stream) {
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
     dtype *weight_addr = nullptr;
@@ -26,25 +26,28 @@ dtype *dev_dw_to_host(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     cudnnDataType_t data_type_unused;
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
-
-    uint num_weights = first_dim * second_dim * third_dim;
+    // TODO can do a check here of stride to see if it is actually different
+    // if not can just copy
+    uint num_weights = num_heads * head_dim * embed_dim;
     assert(ndim == WEIGHT_RANK);
     dtype *buffer = nullptr;
 
     if (is_proj_weights) {
-        uint num_heads = first_dim;
-        uint head_dim = second_dim;
-        uint embed_dim = third_dim;
         CUDA_CHECK(cudaMalloc((void **)&buffer, num_weights * sizeof(dtype)));
+        CUDA_CHECK(
+            cudaMemset((void **)&buffer, 0, num_weights * sizeof(dtype)));
         transpose_call(buffer, weight_addr, embed_dim, head_dim * num_heads,
                        stream);
+        CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaMemcpyAsync(host_data, buffer,
                                    num_weights * sizeof(dtype),
                                    cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaDeviceSynchronize());
     } else {
         CUDA_CHECK(cudaMemcpyAsync(host_data, weight_addr,
                                    num_weights * sizeof(dtype),
                                    cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
     return buffer;
 }
@@ -53,8 +56,8 @@ template <typename dtype>
 dtype *host_w_to_dev(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                      cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
                      size_t size_all_weights, cudnnTensorDescriptor_t desc,
-                     void *dev_w, void *host_data, uint first_dim,
-                     uint second_dim, uint third_dim, bool identity,
+                     void *dev_w, void *host_data, uint num_heads,
+                     uint head_dim, uint embed_dim, bool identity,
                      cudaStream_t stream) {
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
@@ -67,13 +70,10 @@ dtype *host_w_to_dev(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
 
-    uint num_weights = first_dim * second_dim * third_dim;
+    uint num_weights = num_heads * head_dim * embed_dim;
     assert(ndim == WEIGHT_RANK);
     dtype *buffer = nullptr;
     if (is_proj_weights) {
-        uint num_heads = first_dim;
-        uint head_dim = second_dim;
-        uint embed_dim = third_dim;
         if (identity) {
             fill_identity_call(weight_addr, embed_dim, num_heads * head_dim,
                                stream);
@@ -451,7 +451,7 @@ operate(Tensor query, Tensor key, Tensor value,
             size_weights > 0 ? dev_dw : nullptr,                    //
             size_wkspace, size_wkspace > 0 ? dev_wkspace : nullptr, //
             size_reserve, size_reserve > 0 ? dev_reserve : nullptr));
-
+        CUDA_CHECK(cudaDeviceSynchronize());
         Tensor dq(std::move(query.shape), query.scalar_type);
         Tensor dk(std::move(key.shape), key.scalar_type);
         Tensor dv(std::move(value.shape), value.scalar_type);
@@ -485,8 +485,7 @@ operate(Tensor query, Tensor key, Tensor value,
                 ss());
             buffers[3] = dev_dw_to_host<dtype>(
                 handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true, size_weights,
-                weight_desc, dev_dw, do_proj.data, num_heads, proj_o, embed_o,
-                ss());
+                weight_desc, dev_dw, do_proj.data, 1, proj_o, embed_o, ss());
             out[3] = std::optional<Tensor>(std::move(dq_proj));
             out[4] = std::optional<Tensor>(std::move(dk_proj));
             out[5] = std::optional<Tensor>(std::move(dv_proj));

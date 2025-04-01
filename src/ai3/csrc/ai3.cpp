@@ -764,6 +764,7 @@ PYBIND11_MODULE(_core, m) {
     m.def("is_debug_build", [] { return DEBUG_BUILD; });
     m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
     m.def("custom_opt_str", [] { return CUSTOM_OPT_STR; });
+    m.def("mha_num_grad", [] { return mha::NUM_GRAD; });
     m.def("custom_mha_handles_inputs", [] {
         return CUSTOM_MHA_HANDLES_INPUTS.has_value() &&
                *CUSTOM_MHA_HANDLES_INPUTS;

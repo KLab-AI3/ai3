@@ -106,19 +106,29 @@ def mha(q_address: int, k_address: int, v_address: int, input_type: ScalarType,
     ...
 
 
-def mha_backward(dout_address: int, q_address: int, k_address: int, v_address:
-                 int, input_type: ScalarType, mem_fmt: MHAMemFormat, q_shape:
-                 Sequence[int], k_shape: Sequence[int], v_shape: Sequence[int],
-                 q_proj_address: int, k_proj_address: int, v_proj_address: int,
-                 q_bias_in_address: Optional[int], k_bias_in_address:
-                 Optional[int], v_bias_in_address: Optional[int],
-                 k_bias_address: Optional[int], v_bias_address: Optional[int],
-                 out_proj_address: int, out_proj_bias_address: Optional[int],
-                 add_zero_attn: bool, num_heads: int, k_dim: int, v_dim: int,
-                 embed_dim: int, dropout: float, attn_mask_address:
-                 Optional[int], key_padding_mask_address: Optional[int],
-                 need_weights: bool, average_attn_weights: bool, is_causal:
-                 bool, need_to_project: bool, algorithm: str) -> Tensor:
+def mha_num_grad() -> int:
+    ...
+
+
+def mha_backward(
+        dout_address: int, q_address: int, k_address: int, v_address: int,
+        input_type: ScalarType, mem_fmt: MHAMemFormat, q_shape: Sequence
+        [int],
+        k_shape: Sequence[int],
+        v_shape: Sequence[int],
+        q_proj_address: int, k_proj_address: int, v_proj_address: int,
+        q_bias_in_address: Optional[int],
+        k_bias_in_address: Optional[int],
+        v_bias_in_address: Optional[int],
+        k_bias_address: Optional[int],
+        v_bias_address: Optional[int],
+        out_proj_address: int, out_proj_bias_address: Optional[int],
+        add_zero_attn: bool, num_heads: int, k_dim: int, v_dim: int,
+        embed_dim: int, dropout: float, attn_mask_address: Optional[int],
+        key_padding_mask_address: Optional[int],
+        need_weights: bool, average_attn_weights: bool, is_causal: bool,
+        need_to_project: bool, algorithm: str) -> Sequence[
+        Optional[Tensor]]:
     ...
 
 
