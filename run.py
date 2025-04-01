@@ -13,7 +13,9 @@ CSRC_FILES = ' '.join([
     str(f) for f in Path('.').rglob('*')
     if f.suffix in ['.cpp', '.hpp'] and 'venv' not in f.parts])
 PY_FILES = ' '.join([str(f)
-                    for f in Path('.').rglob('*.py') if 'venv' not in f.parts])
+                    for f in Path('.').rglob('*')
+                    if f.suffix in {'.py', '.pyi'} and 'venv' not in f.parts])
+
 
 CONV2D_ALGOS_TO_USE = []
 """The *conv2d* algorithms to use"""

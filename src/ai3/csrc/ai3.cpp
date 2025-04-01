@@ -53,7 +53,7 @@ class MaxPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_MAXPOOL2D) {
+            if (CUSTOM_DEFAULT_MAXPOOL2D) {
                 return maxpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                     stride_h, stride_w, dilation_h, dilation_w, ceil_mode);
@@ -105,7 +105,7 @@ class AvgPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_AVGPOOL2D) {
+            if (CUSTOM_DEFAULT_AVGPOOL2D) {
                 return avgpool2d_custom<dtype>(
                     std::move(input), kernel_h, kernel_w, padding_h, padding_w,
                     stride_h, stride_w, ceil_mode, count_include_pad,
@@ -155,7 +155,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_ADAPTIVEAVGPOOL2D) {
+            if (CUSTOM_DEFAULT_ADAPTIVEAVGPOOL2D) {
                 return adaptiveavgpool2d_custom<dtype>(std::move(input),
                                                        output_h, output_w);
             } else {
@@ -187,7 +187,7 @@ class ReLU : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_RELU) {
+            if (CUSTOM_DEFAULT_RELU) {
                 return relu_custom<dtype>(std::move(input));
             } else {
                 return relu::direct<dtype>(std::move(input));
@@ -220,7 +220,7 @@ class Linear : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_LINEAR) {
+            if (CUSTOM_DEFAULT_LINEAR) {
                 return linear_custom<dtype>(std::move(input), weight, bias);
             } else {
                 return linear::gemm<dtype>(std::move(input), weight, bias);
@@ -252,7 +252,7 @@ class Flatten : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_FLATTEN) {
+            if (CUSTOM_DEFAULT_FLATTEN) {
                 return flatten_custom<dtype>(std::move(input), start_dim,
                                              end_dim);
             } else {
@@ -297,17 +297,17 @@ class Conv2D : virtual public Layer {
 
     template <typename dtype> Tensor forward(Tensor input) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_CONV2D) {
+            if (CUSTOM_DEFAULT_CONV2D) {
                 return conv2d_custom<dtype>(std::move(input), weight, bias,
                                             padding_h, padding_w, stride_h,
                                             stride_w, dilation_h, dilation_w,
                                             padding_mode, groups);
-            } else if constexpr (USING_CUDNN) {
+            } else if (USING_CUDNN) {
                 return conv2d::implicit_precomp_gemm<dtype>(
                     std::move(input), weight, bias, padding_h, padding_w,
                     stride_h, stride_w, dilation_h, dilation_w, padding_mode,
                     groups);
-            } else if constexpr (USING_MPS_METAL) {
+            } else if (USING_MPS_METAL) {
                 return conv2d::mps<dtype>(std::move(input), weight, bias,
                                           padding_h, padding_w, stride_h,
                                           stride_w, dilation_h, dilation_w,
@@ -458,7 +458,7 @@ class MultiheadAttention : virtual public Layer {
                    const bool need_weights, const bool average_attn_weights,
                    const bool is_causal, const bool need_to_project) {
         if (algorithm == DEFAULT_OPT_STR) {
-            if constexpr (CUSTOM_DEFAULT_MHA) {
+            if (CUSTOM_DEFAULT_MHA) {
                 return mha_custom<dtype>(
                     std::move(query), std::move(key), std::move(value),
                     input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,
@@ -485,6 +485,43 @@ class MultiheadAttention : virtual public Layer {
         errs::invalid_algo("MultiheadAttention", algorithm);
     }
 
+    template <typename dtype>
+    std::array<std::optional<Tensor>, mha::NUM_GRAD>
+    backward(const intptr_t dout_address, Tensor query, Tensor key,
+             Tensor value, const mha::MemFormat input_format,
+             const std::optional<const Tensor> &attn_mask,
+             const std::optional<const Tensor> &key_padding_mask,
+             const bool need_weights, const bool average_attn_weights,
+             const bool is_causal, const bool need_to_project) {
+        if (algorithm == DEFAULT_OPT_STR) {
+            if (CUSTOM_DEFAULT_MHA) {
+                return mha_custom_backward<dtype>(
+                    dout_address, std::move(query), std::move(key),
+                    std::move(value), input_format, q_proj, k_proj, v_proj,
+                    q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
+                    out_bias, add_zero_attn, num_heads, dropout,
+                    key_padding_mask, attn_mask, need_weights,
+                    average_attn_weights, is_causal);
+            } else {
+                return mha::standard_backward<dtype>(
+                    dout_address, std::move(query), std::move(key),
+                    std::move(value), input_format, q_proj, k_proj, v_proj,
+                    q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
+                    out_bias, add_zero_attn, num_heads, dropout,
+                    key_padding_mask, attn_mask, need_weights,
+                    average_attn_weights, is_causal, need_to_project);
+            }
+        } else if (algorithm == CUSTOM_OPT_STR) {
+            return mha_custom_backward<dtype>(
+                dout_address, std::move(query), std::move(key),
+                std::move(value), input_format, q_proj, k_proj, v_proj,
+                q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
+                out_bias, add_zero_attn, num_heads, dropout, key_padding_mask,
+                attn_mask, need_weights, average_attn_weights, is_causal);
+        }
+        errs::invalid_algo("MultiheadAttention backward", algorithm);
+    }
+
     ~MultiheadAttention() = default;
 
   private:
@@ -505,6 +542,34 @@ class MultiheadAttention : virtual public Layer {
     const float dropout;
     const std::string algorithm;
 };
+
+std::optional<Tensor> form_attn_mask(const std::optional<intptr_t> addr,
+                                     const std::vector<uint> &q,
+                                     const std::vector<uint> &k,
+                                     const ScalarType type) {
+    return addr ? std::optional<Tensor>(Tensor::form_tensor(
+                      *addr, {q[q.size() - 2], k[k.size() - 2]}, type))
+                : std::nullopt;
+}
+
+std::optional<Tensor> form_key_padding_mask(const std::optional<intptr_t> addr,
+                                            const std::vector<uint> &k,
+                                            const mha::MemFormat input_format,
+                                            const ScalarType type) {
+    uint batch_dim = 0, seq_dim = 1;
+    if (input_format == mha::MemFormat::SNE ||
+        input_format == mha::MemFormat::SNHD) {
+        seq_dim = 0;
+        batch_dim = 1;
+    }
+    return addr
+               ? std::optional<Tensor>(Tensor::form_tensor(
+                     *addr,
+                     k.size() == 4 ? std::vector<uint>{k[batch_dim], k[seq_dim]}
+                                   : std::vector<uint>{k[seq_dim]},
+                     type))
+               : std::nullopt;
+}
 
 // TODO when doing the weights will have to make this maybe return two
 // things
@@ -535,22 +600,9 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
         out_proj_address, out_proj_bias_address, add_zero_attn, num_heads,
         k_dim, v_dim, embed_dim, dropout, algorithm, input_type, false);
     const std::optional<const Tensor> attn_mask =
-        attn_mask_address
-            ? std::optional<Tensor>(Tensor::form_tensor(
-                  *attn_mask_address,
-                  {q_shape[q_shape.size() - 2], k_shape[k_shape.size() - 2]},
-                  input_type))
-            : std::nullopt;
-    const std::optional<const Tensor> key_padding_mask =
-        key_padding_mask_address
-            ? std::optional<Tensor>(Tensor::form_tensor(
-                  *key_padding_mask_address,
-                  k_shape.size() == 4
-                      ? std::vector<uint>{k_shape[0],
-                                          k_shape[k_shape.size() - 2]}
-                      : std::vector<uint>{k_shape[k_shape.size() - 2]},
-                  input_type))
-            : std::nullopt;
+        form_attn_mask(attn_mask_address, q_shape, k_shape, input_type);
+    const std::optional<const Tensor> key_padding_mask = form_key_padding_mask(
+        key_padding_mask_address, k_shape, input_format, input_type);
     Tensor query = Tensor::form_tensor(q_address, q_shape, input_type);
     Tensor key = Tensor::form_tensor(k_address, k_shape, input_type);
     Tensor value = Tensor::form_tensor(v_address, v_shape, input_type);
@@ -565,6 +617,52 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
         std::move(query), std::move(key), std::move(value), input_format,
         attn_mask, key_padding_mask, need_weights, average_attn_weights,
         is_causal, need_to_project);
+}
+
+std::array<std::optional<Tensor>, mha::NUM_GRAD> mha_with_algo_backward(
+    const intptr_t dout_address, const intptr_t q_address,
+    const intptr_t k_address, const intptr_t v_address,
+    const ScalarType input_type, const mha::MemFormat input_format,
+    const std::vector<uint> q_shape, const std::vector<uint> k_shape,
+    const std::vector<uint> v_shape, const intptr_t q_proj_address,
+    const intptr_t k_proj_address, const intptr_t v_proj_address,
+    const std::optional<intptr_t> q_bias_in_address,
+    const std::optional<intptr_t> k_bias_in_address,
+    const std::optional<intptr_t> v_bias_in_address,
+    const std::optional<intptr_t> k_bias_address,
+    const std::optional<intptr_t> v_bias_address,
+    const intptr_t out_proj_address,
+    const std::optional<intptr_t> out_proj_bias_address,
+    const bool add_zero_attn, const uint num_heads, const uint k_dim,
+    const uint v_dim, const uint embed_dim, const float dropout,
+    const std::optional<intptr_t> attn_mask_address,
+    const std::optional<intptr_t> key_padding_mask_address,
+    const bool need_weights, const bool average_attn_weights,
+    const bool is_causal, const bool need_to_project,
+    const std::string algorithm) {
+    MultiheadAttention layer(
+        q_proj_address, k_proj_address, v_proj_address, q_bias_in_address,
+        k_bias_in_address, v_bias_in_address, k_bias_address, v_bias_address,
+        out_proj_address, out_proj_bias_address, add_zero_attn, num_heads,
+        k_dim, v_dim, embed_dim, dropout, algorithm, input_type, false);
+    const std::optional<const Tensor> attn_mask =
+        form_attn_mask(attn_mask_address, q_shape, k_shape, input_type);
+    const std::optional<const Tensor> key_padding_mask = form_key_padding_mask(
+        key_padding_mask_address, k_shape, input_format, input_type);
+    Tensor query = Tensor::form_tensor(q_address, q_shape, input_type);
+    Tensor key = Tensor::form_tensor(k_address, k_shape, input_type);
+    Tensor value = Tensor::form_tensor(v_address, v_shape, input_type);
+
+    if (input_type == ScalarType::Float32) {
+        return layer.backward<float>(
+            dout_address, std::move(query), std::move(key), std::move(value),
+            input_format, attn_mask, key_padding_mask, need_weights,
+            average_attn_weights, is_causal, need_to_project);
+    }
+    return layer.backward<double>(
+        dout_address, std::move(query), std::move(key), std::move(value),
+        input_format, attn_mask, key_padding_mask, need_weights,
+        average_attn_weights, is_causal, need_to_project);
 }
 
 class Model {
@@ -619,6 +717,7 @@ PYBIND11_MODULE(_core, m) {
 
     m.def("conv2d", &conv2d_with_algo);
     m.def("mha", &mha_with_algo);
+    m.def("mha_backward", &mha_with_algo_backward);
 
     py::class_<Linear, Layer, std::shared_ptr<Linear>>(m, "Linear")
         .def(py::init<const intptr_t, const std::vector<uint>,

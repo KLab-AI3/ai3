@@ -132,7 +132,7 @@ template <typename... Args> [[noreturn]] void bail(Args... args) {
 }
 
 [[noreturn]] inline void no_user_def(const std::string &name) {
-    bail("trying to use custom ", name, " when no implementation exists");
+    bail("trying to use user ", name, " when no implementation exists");
 }
 
 [[noreturn]] inline void invalid_algo(const std::string &op,

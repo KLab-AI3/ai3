@@ -206,11 +206,6 @@ class MultiheadAttention(nn.Module):
                 average_attn_weights, is_causal, True, self.algorithm)
         else:
             q, k, v, mem_fmt = self.handle_inputs(query, key, value)
-            # if mem_fmt == _core.MHAMemFormat.SNHD:
-            #     q, k, v = (x.permute(1, 2, 0, 3) for x in (q,k,v))
-            # elif mem_fmt == _core.MHAMemFormat.NSHD:
-            #     q, k, v = (x.transpose(1, 2) for x in (q,k,v))
-            # attn_output = F.scaled_dot_product_attention(q, k, v)
             attn_output = ops.ai3.mha(
                 q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
                 self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
@@ -220,12 +215,6 @@ class MultiheadAttention(nn.Module):
                 self.dropout,
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, False, self.algorithm)
-            # batch_size = query.shape[0 if self.batch_first else 1]
-            # tgt_len = query.shape[1 if self.batch_first else 0]
-            # embed_dim = query.shape[2]
-            #
-            # attn_output = self.handle_outputs(
-            #     attn_output, batch_size, tgt_len, embed_dim)
         if not batched:
             if self.batch_first:
                 attn_output = attn_output.squeeze(0)
@@ -341,8 +330,7 @@ def conv2d_abstract(
 
 def conv2d_backward(ctx, out_grad):
     input, weight = ctx.saved_tensors
-    padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, padding_mode, groups = ctx.hparams
-    del padding_mode
+    padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, _, groups = ctx.hparams
 
     grad_input = grad_weight = grad_bias = None
 
@@ -406,9 +394,11 @@ torch.library.register_fake(
 torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
-# TODO setup training
 
+def ptr_or_none(t: torch.Tensor):
+    return None if t is None else t.data_ptr()
 
+# TODO first need the order of these to be the same as the order on the NUM_GRAD array
 def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         mem_fmt: int, q_proj: torch.Tensor, k_proj: torch.Tensor,
         v_proj: torch.Tensor, q_proj_bias: torch.Tensor,
@@ -419,21 +409,18 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
         key_padding_mask: torch.Tensor, need_weights: bool,
         attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
         need_to_project: bool, algorithm: str) -> torch.Tensor:
-    q_ptr = query.data_ptr()
-    k_ptr = key.data_ptr()
-    v_ptr = value.data_ptr()
-    q_proj_ptr = q_proj.data_ptr()
-    k_proj_ptr = k_proj.data_ptr()
-    v_proj_ptr = v_proj.data_ptr()
-    q_bias_proj_ptr = None if q_proj_bias is None else q_proj_bias.data_ptr()
-    k_bias_proj_ptr = None if k_proj_bias is None else k_proj_bias.data_ptr()
-    v_bias_proj_ptr = None if v_proj_bias is None else v_proj_bias.data_ptr()
-    k_bias_ptr = None if k_bias is None else k_bias.data_ptr()
-    v_bias_ptr = None if v_bias is None else v_bias.data_ptr()
-    out_proj_ptr = out_proj.data_ptr()
-    out_bias_proj_ptr = None if out_proj_bias is None else out_proj_bias.data_ptr()
-    attn_mask_ptr = None if attn_mask is None else attn_mask.data_ptr()
-    key_padding_mask_ptr = None if key_padding_mask is None else key_padding_mask.data_ptr()
+    q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
+    q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
+        q_proj.data_ptr(), k_proj.data_ptr(), v_proj.data_ptr(), out_proj.data_ptr()
+    )
+    q_bias_proj_ptr = ptr_or_none(q_proj_bias)
+    k_bias_proj_ptr = ptr_or_none(k_proj_bias)
+    v_bias_proj_ptr = ptr_or_none(v_proj_bias)
+    out_bias_proj_ptr = ptr_or_none(out_proj_bias)
+    k_bias_ptr = ptr_or_none(k_bias)
+    v_bias_ptr = ptr_or_none(v_bias)
+    attn_mask_ptr = ptr_or_none(attn_mask)
+    key_padding_mask_ptr = ptr_or_none(key_padding_mask)
 
     out = _core.mha(
         q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
@@ -450,8 +437,80 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
     return buffer
 
 
+# TODO can this be _ instead of args
+def mha_abstract(query: torch.Tensor, *args) -> torch.Tensor:
+    del args
+    return torch.empty(query.shape, dtype=query.dtype, device='cpu')
+
+
+def mha_setup_context(ctx, inputs, output):
+    (query, key, value,
+     mem_fmt, q_proj, k_proj,
+     v_proj, q_proj_bias,
+     k_proj_bias, v_proj_bias,
+     k_bias, v_bias, out_proj,
+     out_proj_bias, add_zero_attn, num_heads,
+     k_dim, v_dim, embed_dim, dropout,
+     key_padding_mask, need_weights,
+     attn_mask, average_attn_weights, is_causal,
+     need_to_project, algorithm) = inputs
+    del output
+    if any(ctx.needs_input_grad):
+        ctx.save_for_backward(query.clone(), key.clone(), value.clone(),
+                              q_proj.clone(), k_proj.clone(), v_proj.clone(),
+                              out_proj.clone(), q_proj_bias.clone(),
+                              k_proj_bias.clone(), v_proj_bias.clone(),
+                              out_proj_bias.clone(), k_bias.clone(),
+                              v_bias.clone())
+        assert not hasattr(ctx, 'hparams')
+        ctx.hparams = (mem_fmt, add_zero_attn, num_heads, k_dim, v_dim,
+                       embed_dim, dropout, key_padding_mask, need_weights,
+                       attn_mask, average_attn_weights, is_causal,
+                       need_to_project, algorithm)
+
+def mha_backward(ctx, out_grad):
+    (query, key, value,
+     q_proj, k_proj, v_proj,
+     out_proj, q_proj_bias,
+     k_proj_bias, v_proj_bias,
+     out_proj_bias, k_bias,
+     v_bias) = ctx.saved_tensors
+    ctx.hparams = (mem_fmt, add_zero_attn, num_heads, k_dim, v_dim,
+                   embed_dim, dropout, key_padding_mask, need_weights,
+                   attn_mask, average_attn_weights, is_causal,
+                   need_to_project, algorithm) = ctx.hparams
+    q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
+    q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
+        q_proj.data_ptr(), k_proj.data_ptr(), v_proj.data_ptr(), out_proj.data_ptr()
+    )
+    q_bias_proj_ptr = ptr_or_none(q_proj_bias)
+    k_bias_proj_ptr = ptr_or_none(k_proj_bias)
+    v_bias_proj_ptr = ptr_or_none(v_proj_bias)
+    out_bias_proj_ptr = ptr_or_none(out_proj_bias)
+    k_bias_ptr = ptr_or_none(k_bias)
+    v_bias_ptr = ptr_or_none(v_bias)
+    attn_mask_ptr = ptr_or_none(attn_mask)
+    key_padding_mask_ptr = ptr_or_none(key_padding_mask)
+
+    # TODO need to figure out the order of the grads here
+    out = _core.mha(
+        q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+        _core.MHAMemFormat(mem_fmt),
+        query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
+        v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
+        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
+        num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
+        key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
+        need_to_project, algorithm)
+    buffer = torch.frombuffer(
+        out, dtype=query.dtype).view(
+        out.shape)
+
+
 torch.library.custom_op(
     'ai3::mha', mha, mutates_args=())
+torch.library.register_fake(
+    'ai3::mha', mha_abstract)
 
 
 def get_algo_inc_counter(orig: Union[nn.Module, str],
