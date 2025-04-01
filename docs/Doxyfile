@@ -293,7 +293,7 @@ ALIASES = REPO_MAIN=$(REPO_MAIN)
 ALIASES += REPO_SRC=$(REPO_SRC)
 ALIASES += REPO_CSRC=$(REPO_CSRC)
 ALIASES += DEFAULT_BOOL{1}="@ingroup custom^^ Set this to *true* to use custom *\1* operation as default"
-ALIASES += CUSTOM_OP{2}="@ingroup custom^^@brief Function for custom implementations of *\1*, see built-in implementations <a href=\"@REPO_CSRC/\2\">here</a>^^ @tparam dtype The data type of the tensors"
+ALIASES += CUSTOM_OP{2}="@ingroup custom^^@brief Function for custom implementations of *\1*, see built-in implementations <a href=\"@REPO_CSRC/\2\">here</a>^^ @tparam dtype The data type of the tensors^^"
 ALIASES += PROJECT_NAME=$(PROJECT_NAME)
 
 # Set the OPTIMIZE_OUTPUT_FOR_C tag to YES if your project consists of C sources

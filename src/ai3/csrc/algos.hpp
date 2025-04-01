@@ -76,14 +76,26 @@ template <typename dtype> Tensor direct(FLATTEN_PARAMS);
         const bool, const bool
 
 namespace mha {
+/**
+ * Possible memory formats of inputs.
+ */
 enum class MemFormat { NSE, SNE, NSHD, SNHD };
-const uint NUM_GRAD =
-    11; // TODO put documentation here on the order and make sure it shows
 
+/**
+ * Number of gradients to return in backward.
+ *
+ * Order: \f$\{\nabla q, \nabla k, \nabla v, \nabla q_{proj}, \nabla k_{proj},
+ * \nabla v_{proj}, \nabla o_{proj},\nabla q_{bias}, \nabla k_{bias}, \nabla
+ * v_{bias}, \nabla o_{bias}\}\f$
+ */
+const uint NUM_GRAD = 11;
+
+/// \cond
 template <typename dtype> Tensor standard(MHA_PARAMS);
 template <typename dtype>
-std::array<Tensor, NUM_GRAD> standard_backward(MHA_PARAMS);
-
+std::array<std::optional<Tensor>, mha::NUM_GRAD>
+standard_backward(const intptr_t, MHA_PARAMS);
+/// \endcond
 } // namespace mha
 
 #if defined USE_CUBLAS
