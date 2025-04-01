@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import enum
 from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
@@ -396,6 +397,11 @@ torch.library.register_autograd(
 def ptr_or_none(t: torch.Tensor):
     return None if t is None else t.data_ptr()
 
+
+def clone_or_none(t: torch.Tensor):
+    return None if t is None else t.clone()
+
+
 def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
         torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
         torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
@@ -405,6 +411,7 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
         key_padding_mask: torch.Tensor, need_weights: bool, attn_mask:
         torch.Tensor, average_attn_weights: bool, is_causal: bool,
         need_to_project: bool, algorithm: str) -> torch.Tensor:
+    print('forward')
     q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
     q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
         q_proj.data_ptr(),
@@ -435,31 +442,35 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
     return buffer
 
 
-# TODO can this be _ instead of args
 def mha_abstract(query: torch.Tensor, *args) -> torch.Tensor:
+    print('abstract')
     del args
     return torch.empty(query.shape, dtype=query.dtype, device='cpu')
 
 
 def mha_setup_context(ctx, inputs, output):
-    (query, key, value,
-     mem_fmt, q_proj, k_proj,
-     v_proj, q_proj_bias,
-     k_proj_bias, v_proj_bias,
-     k_bias, v_bias, out_proj,
-     out_proj_bias, add_zero_attn, num_heads,
-     k_dim, v_dim, embed_dim, dropout,
-     key_padding_mask, need_weights,
-     attn_mask, average_attn_weights, is_causal,
-     need_to_project, algorithm) = inputs
+    print('setup')
+    (query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias,
+     k_proj_bias, v_proj_bias, out_proj_bias, mem_fmt, k_bias, v_bias,
+     add_zero_attn, num_heads, k_dim, v_dim, embed_dim, dropout,
+     key_padding_mask, need_weights, attn_mask, average_attn_weights,
+     is_causal, need_to_project, algorithm) = inputs
     del output
     if any(ctx.needs_input_grad):
-        ctx.save_for_backward(query.clone(), key.clone(), value.clone(),
-                              q_proj.clone(), k_proj.clone(), v_proj.clone(),
-                              out_proj.clone(), q_proj_bias.clone(),
-                              k_proj_bias.clone(), v_proj_bias.clone(),
-                              out_proj_bias.clone(), k_bias.clone(),
-                              v_bias.clone())
+        ctx.save_for_backward(
+            query.clone(),
+            key.clone(),
+            value.clone(),
+            q_proj.clone(),
+            k_proj.clone(),
+            v_proj.clone(),
+            out_proj.clone(),
+            clone_or_none(q_proj_bias),
+            clone_or_none(k_proj_bias),
+            clone_or_none(v_proj_bias),
+            clone_or_none(out_proj_bias),
+            clone_or_none(k_bias),
+            clone_or_none(v_bias))
         assert not hasattr(ctx, 'hparams')
         ctx.hparams = (mem_fmt, add_zero_attn, num_heads, k_dim, v_dim,
                        embed_dim, dropout, key_padding_mask, need_weights,
@@ -468,6 +479,7 @@ def mha_setup_context(ctx, inputs, output):
 
 
 def mha_backward(ctx, out_grad):
+    print('backward')
     (query, key, value,
      q_proj, k_proj, v_proj,
      out_proj, q_proj_bias,
@@ -478,7 +490,8 @@ def mha_backward(ctx, out_grad):
                    embed_dim, dropout, key_padding_mask, need_weights,
                    attn_mask, average_attn_weights, is_causal,
                    need_to_project, algorithm) = ctx.hparams
-    q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
+    q_ptr, k_ptr, v_ptr, do_ptr = query.data_ptr(
+    ), key.data_ptr(), value.data_ptr(), out_grad.data_ptr()
     q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
         q_proj.data_ptr(),
         k_proj.data_ptr(),
@@ -493,9 +506,8 @@ def mha_backward(ctx, out_grad):
     attn_mask_ptr = ptr_or_none(attn_mask)
     key_padding_mask_ptr = ptr_or_none(key_padding_mask)
 
-    # TODO need to figure out the order of the grads here
-    out = _core.mha(
-        q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+    out = _core.mha_backward(
+        do_ptr, q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
         _core.MHAMemFormat(mem_fmt),
         query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
         v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
@@ -503,15 +515,28 @@ def mha_backward(ctx, out_grad):
         num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
-    buffer = torch.frombuffer(
-        out, dtype=query.dtype).view(
-        out.shape)
+    assert (len(out) == _core.mha_num_grad())
+    # need to make them all a list
+    grads = []
+    for i, grad in enumerate(out):
+        if grad is not None:
+            print(f'{i} exists shape: {grad.shape}')
+            grads.append(torch.frombuffer(grad, dtype=query.dtype).view(grad.shape))
+            print(f'{i} done')
+        else:
+            print(f'{i} is none')
+
+    # grads = [torch.frombuffer(grad, dtype=query.dtype).view(
+    #     grad.shape) if grad is not None else None for grad in out]
+    return (*grads, *((None,) * 16))
 
 
 torch.library.custom_op(
     'ai3::mha', mha, mutates_args=())
 torch.library.register_fake(
     'ai3::mha', mha_abstract)
+torch.library.register_autograd(
+    'ai3::mha', mha_backward, setup_context=mha_setup_context)
 
 
 def get_algo_inc_counter(orig: Union[nn.Module, str],

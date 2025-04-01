@@ -14,8 +14,9 @@ template <typename dtype>
 dtype *dev_dw_to_host(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                       cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
                       size_t size_all_weights, cudnnTensorDescriptor_t desc,
-                      void *dev_dw, void *host_data, uint first_dim,
-                      uint second_dim, uint third_dim, cudaStream_t stream) {
+                      void *dev_dw, void *host_data, uint num_heads,
+                      uint head_dim, uint embed_dim, cudaStream_t stream) {
+    std::cout << "enter" << std::endl;
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
     dtype *weight_addr = nullptr;
@@ -26,26 +27,35 @@ dtype *dev_dw_to_host(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     cudnnDataType_t data_type_unused;
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
-
-    uint num_weights = first_dim * second_dim * third_dim;
+    // TODO can do a check here of stride to see if it is actually different
+    // if not can just copy
+    uint num_weights = num_heads * head_dim * embed_dim;
     assert(ndim == WEIGHT_RANK);
     dtype *buffer = nullptr;
 
     if (is_proj_weights) {
-        uint num_heads = first_dim;
-        uint head_dim = second_dim;
-        uint embed_dim = third_dim;
+        std::cout << "weights" << std::endl;
         CUDA_CHECK(cudaMalloc((void **)&buffer, num_weights * sizeof(dtype)));
+        CUDA_CHECK(
+            cudaMemset((void **)&buffer, 0, num_weights * sizeof(dtype)));
+        std::cout << "malloced" << std::endl;
         transpose_call(buffer, weight_addr, embed_dim, head_dim * num_heads,
                        stream);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        std::cout << "kernel" << std::endl;
         CUDA_CHECK(cudaMemcpyAsync(host_data, buffer,
                                    num_weights * sizeof(dtype),
                                    cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        std::cout << "cpy" << std::endl;
     } else {
         CUDA_CHECK(cudaMemcpyAsync(host_data, weight_addr,
                                    num_weights * sizeof(dtype),
                                    cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        std::cout << "cpy bias" << std::endl;
     }
+    std::cout << "leave" << std::endl;
     return buffer;
 }
 
@@ -53,8 +63,8 @@ template <typename dtype>
 dtype *host_w_to_dev(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
                      cudnnMultiHeadAttnWeightKind_t kind, bool is_proj_weights,
                      size_t size_all_weights, cudnnTensorDescriptor_t desc,
-                     void *dev_w, void *host_data, uint first_dim,
-                     uint second_dim, uint third_dim, bool identity,
+                     void *dev_w, void *host_data, uint num_heads,
+                     uint head_dim, uint embed_dim, bool identity,
                      cudaStream_t stream) {
     int dim[WEIGHT_RANK], stride[WEIGHT_RANK];
     int ndim;
@@ -67,13 +77,10 @@ dtype *host_w_to_dev(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     CUDNN_CHECK(cudnnGetTensorNdDescriptor(desc, WEIGHT_RANK, &data_type_unused,
                                            &ndim, dim, stride));
 
-    uint num_weights = first_dim * second_dim * third_dim;
+    uint num_weights = num_heads * head_dim * embed_dim;
     assert(ndim == WEIGHT_RANK);
     dtype *buffer = nullptr;
     if (is_proj_weights) {
-        uint num_heads = first_dim;
-        uint head_dim = second_dim;
-        uint embed_dim = third_dim;
         if (identity) {
             fill_identity_call(weight_addr, embed_dim, num_heads * head_dim,
                                stream);
@@ -129,6 +136,7 @@ operate(Tensor query, Tensor key, Tensor value,
     errs::bail_if(!is_causal && attn_mask.has_value(),
                   "no support for attention mask");
 
+    std::cout << "begin operate" << std::endl;
     uint batch_size, seq_len_q, embed_q, seq_len_k, embed_k, embed_v, proj_q,
         proj_k, proj_v, embed_o, proj_o;
     if (need_to_project_input) {
@@ -451,7 +459,8 @@ operate(Tensor query, Tensor key, Tensor value,
             size_weights > 0 ? dev_dw : nullptr,                    //
             size_wkspace, size_wkspace > 0 ? dev_wkspace : nullptr, //
             size_reserve, size_reserve > 0 ? dev_reserve : nullptr));
-
+        CUDA_CHECK(cudaDeviceSynchronize());
+        std::cout << "copying" << std::endl;
         Tensor dq(std::move(query.shape), query.scalar_type);
         Tensor dk(std::move(key.shape), key.scalar_type);
         Tensor dv(std::move(value.shape), value.scalar_type);
@@ -471,6 +480,7 @@ operate(Tensor query, Tensor key, Tensor value,
             Tensor dk_proj(std::move(k_proj.shape), k_proj.scalar_type);
             Tensor dv_proj(std::move(v_proj.shape), v_proj.scalar_type);
             Tensor do_proj(std::move(o_proj.shape), o_proj.scalar_type);
+            std::cout << "dev_dw_to_host calls" << std::endl;
             buffers[0] = dev_dw_to_host<dtype>(
                 handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true, size_weights,
                 weight_desc, dev_dw, dq_proj.data, num_heads, proj_q, embed_q,
@@ -485,8 +495,7 @@ operate(Tensor query, Tensor key, Tensor value,
                 ss());
             buffers[3] = dev_dw_to_host<dtype>(
                 handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true, size_weights,
-                weight_desc, dev_dw, do_proj.data, num_heads, proj_o, embed_o,
-                ss());
+                weight_desc, dev_dw, do_proj.data, 1, proj_o, embed_o, ss());
             out[3] = std::optional<Tensor>(std::move(dq_proj));
             out[4] = std::optional<Tensor>(std::move(dk_proj));
             out[5] = std::optional<Tensor>(std::move(dv_proj));
@@ -516,6 +525,7 @@ operate(Tensor query, Tensor key, Tensor value,
                 out[8] = std::optional<Tensor>(std::move(dk_bias));
                 out[9] = std::optional<Tensor>(std::move(dv_bias));
                 out[10] = std::optional<Tensor>(std::move(do_bias));
+                std::cout << "dev_dw_to_host done bias" << std::endl;
             }
         }
         ss.sync();
@@ -562,6 +572,7 @@ operate(Tensor query, Tensor key, Tensor value,
     delete[] q_seq_array;
     delete[] k_seq_array;
 
+    std::cout << "done operate" << std::endl;
     return out;
 }
 
@@ -606,6 +617,7 @@ std::array<std::optional<Tensor>, mha::NUM_GRAD> mha::standard_backward(
     const std::optional<const Tensor> &attn_mask, const bool need_weights,
     const bool average_attn_weights, const bool is_causal,
     const bool need_to_project_input) {
+    std::cout << "standard_backward" << std::endl;
     return operate<dtype>(
         std::move(query), std::move(key), std::move(value), input_format,
         q_proj, k_proj, v_proj, q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias,
