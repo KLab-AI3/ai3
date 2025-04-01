@@ -165,21 +165,20 @@ class MultiheadAttention(nn.Module):
         if self.algorithm == _core.custom_opt_str():
             if _core.custom_mha_handles_inputs():
                 attn_output = ops.ai3.mha(
-                    query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-                    self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-                    bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                    self.kdim, self.vdim, self.embed_dim,
-                    self.dropout,
-                    key_padding_mask, need_weights, attn_mask,
+                    query, key, value, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
+                    self.bias_k_in, self.bias_v_in, self.out_proj_bias,
+                    mem_fmt, self.bias_k, self.bias_v, self.add_zero_attn,
+                    self.num_heads, self.kdim, self.vdim, self.embed_dim, self.
+                    dropout, key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
             else:
                 q, k, v, mem_fmt = self.handle_inputs(query, key, value)
                 attn_output = ops.ai3.mha(
-                    q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-                    self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-                    bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                    self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                    q, k, v, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.out_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                    bias_v_in, self.out_proj_bias, mem_fmt, self.bias_k, self.bias_v,
+                    self.add_zero_attn, self.num_heads,
                     self.kdim, self.vdim, self.embed_dim,
                     self.dropout,
                     key_padding_mask, need_weights, attn_mask,
@@ -196,21 +195,20 @@ class MultiheadAttention(nn.Module):
                                                                    and
                                                                    average_attn_weights)):
             attn_output = ops.ai3.mha(
-                query, key, value, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                self.out_proj_bias, self.add_zero_attn, self.num_heads,
-                self.kdim, self.vdim, self.embed_dim,
-                self.dropout,
+                query, key, value, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
+                self.bias_k_in, self.bias_v_in, self.out_proj_bias, mem_fmt,
+                self.bias_k, self.bias_v, self.add_zero_attn, self.num_heads,
+                self.kdim, self.vdim, self.embed_dim, self.dropout,
                 key_padding_mask, need_weights, attn_mask,
                 average_attn_weights, is_causal, True, self.algorithm)
         else:
             q, k, v, mem_fmt = self.handle_inputs(query, key, value)
             attn_output = ops.ai3.mha(
-                q, k, v, mem_fmt, self.q_proj_weight, self.k_proj_weight,
-                self.v_proj_weight, self.bias_q_in, self.bias_k_in, self.
-                bias_v_in, self.bias_k, self.bias_v, self.out_proj_weight,
-                self.out_proj_bias, self.add_zero_attn, self.num_heads,
+                q, k, v, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.out_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                bias_v_in, self.out_proj_bias, mem_fmt, self.bias_k, self.bias_v,
+                self.add_zero_attn, self.num_heads,
                 self.kdim, self.vdim, self.embed_dim,
                 self.dropout,
                 key_padding_mask, need_weights, attn_mask,
@@ -398,21 +396,21 @@ torch.library.register_autograd(
 def ptr_or_none(t: torch.Tensor):
     return None if t is None else t.data_ptr()
 
-# TODO first need the order of these to be the same as the order on the NUM_GRAD array
-def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
-        mem_fmt: int, q_proj: torch.Tensor, k_proj: torch.Tensor,
-        v_proj: torch.Tensor, q_proj_bias: torch.Tensor,
-        k_proj_bias: torch.Tensor, v_proj_bias: torch.Tensor,
-        k_bias: torch.Tensor, v_bias: torch.Tensor, out_proj: torch.Tensor,
-        out_proj_bias: torch.Tensor, add_zero_attn: bool, num_heads: int,
-        k_dim: int, v_dim: int, embed_dim: int, dropout: float,
-        key_padding_mask: torch.Tensor, need_weights: bool,
-        attn_mask: torch.Tensor, average_attn_weights: bool, is_causal: bool,
+def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
+        torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
+        torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
+        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, mem_fmt: int,
+        k_bias: torch.Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
+        num_heads: int, k_dim: int, v_dim: int, embed_dim: int, dropout: float,
+        key_padding_mask: torch.Tensor, need_weights: bool, attn_mask:
+        torch.Tensor, average_attn_weights: bool, is_causal: bool,
         need_to_project: bool, algorithm: str) -> torch.Tensor:
     q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
     q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
-        q_proj.data_ptr(), k_proj.data_ptr(), v_proj.data_ptr(), out_proj.data_ptr()
-    )
+        q_proj.data_ptr(),
+        k_proj.data_ptr(),
+        v_proj.data_ptr(),
+        out_proj.data_ptr())
     q_bias_proj_ptr = ptr_or_none(q_proj_bias)
     k_bias_proj_ptr = ptr_or_none(k_proj_bias)
     v_bias_proj_ptr = ptr_or_none(v_proj_bias)
@@ -468,6 +466,7 @@ def mha_setup_context(ctx, inputs, output):
                        attn_mask, average_attn_weights, is_causal,
                        need_to_project, algorithm)
 
+
 def mha_backward(ctx, out_grad):
     (query, key, value,
      q_proj, k_proj, v_proj,
@@ -481,8 +480,10 @@ def mha_backward(ctx, out_grad):
                    need_to_project, algorithm) = ctx.hparams
     q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
     q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
-        q_proj.data_ptr(), k_proj.data_ptr(), v_proj.data_ptr(), out_proj.data_ptr()
-    )
+        q_proj.data_ptr(),
+        k_proj.data_ptr(),
+        v_proj.data_ptr(),
+        out_proj.data_ptr())
     q_bias_proj_ptr = ptr_or_none(q_proj_bias)
     k_bias_proj_ptr = ptr_or_none(k_proj_bias)
     v_bias_proj_ptr = ptr_or_none(v_proj_bias)

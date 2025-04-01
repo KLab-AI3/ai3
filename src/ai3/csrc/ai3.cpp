@@ -487,8 +487,8 @@ class MultiheadAttention : virtual public Layer {
 
     template <typename dtype>
     std::array<std::optional<Tensor>, mha::NUM_GRAD>
-    backward(const intptr_t dout_address, Tensor query, Tensor key,
-             Tensor value, const mha::MemFormat input_format,
+    backward(const intptr_t do_address, Tensor query, Tensor key, Tensor value,
+             const mha::MemFormat input_format,
              const std::optional<const Tensor> &attn_mask,
              const std::optional<const Tensor> &key_padding_mask,
              const bool need_weights, const bool average_attn_weights,
@@ -496,7 +496,7 @@ class MultiheadAttention : virtual public Layer {
         if (algorithm == DEFAULT_OPT_STR) {
             if (CUSTOM_DEFAULT_MHA) {
                 return mha_custom_backward<dtype>(
-                    dout_address, std::move(query), std::move(key),
+                    do_address, std::move(query), std::move(key),
                     std::move(value), input_format, q_proj, k_proj, v_proj,
                     q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
                     out_bias, add_zero_attn, num_heads, dropout,
@@ -504,7 +504,7 @@ class MultiheadAttention : virtual public Layer {
                     average_attn_weights, is_causal);
             } else {
                 return mha::standard_backward<dtype>(
-                    dout_address, std::move(query), std::move(key),
+                    do_address, std::move(query), std::move(key),
                     std::move(value), input_format, q_proj, k_proj, v_proj,
                     q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
                     out_bias, add_zero_attn, num_heads, dropout,
@@ -513,11 +513,11 @@ class MultiheadAttention : virtual public Layer {
             }
         } else if (algorithm == CUSTOM_OPT_STR) {
             return mha_custom_backward<dtype>(
-                dout_address, std::move(query), std::move(key),
-                std::move(value), input_format, q_proj, k_proj, v_proj,
-                q_bias_in, k_bias_in, v_bias_in, k_bias, v_bias, out_proj,
-                out_bias, add_zero_attn, num_heads, dropout, key_padding_mask,
-                attn_mask, need_weights, average_attn_weights, is_causal);
+                do_address, std::move(query), std::move(key), std::move(value),
+                input_format, q_proj, k_proj, v_proj, q_bias_in, k_bias_in,
+                v_bias_in, k_bias, v_bias, out_proj, out_bias, add_zero_attn,
+                num_heads, dropout, key_padding_mask, attn_mask, need_weights,
+                average_attn_weights, is_causal);
         }
         errs::invalid_algo("MultiheadAttention backward", algorithm);
     }
@@ -620,7 +620,7 @@ mha_with_algo(const intptr_t q_address, const intptr_t k_address,
 }
 
 std::array<std::optional<Tensor>, mha::NUM_GRAD> mha_with_algo_backward(
-    const intptr_t dout_address, const intptr_t q_address,
+    const intptr_t do_address, const intptr_t q_address,
     const intptr_t k_address, const intptr_t v_address,
     const ScalarType input_type, const mha::MemFormat input_format,
     const std::vector<uint> q_shape, const std::vector<uint> k_shape,
@@ -655,12 +655,12 @@ std::array<std::optional<Tensor>, mha::NUM_GRAD> mha_with_algo_backward(
 
     if (input_type == ScalarType::Float32) {
         return layer.backward<float>(
-            dout_address, std::move(query), std::move(key), std::move(value),
+            do_address, std::move(query), std::move(key), std::move(value),
             input_format, attn_mask, key_padding_mask, need_weights,
             average_attn_weights, is_causal, need_to_project);
     }
     return layer.backward<double>(
-        dout_address, std::move(query), std::move(key), std::move(value),
+        do_address, std::move(query), std::move(key), std::move(value),
         input_format, attn_mask, key_padding_mask, need_weights,
         average_attn_weights, is_causal, need_to_project);
 }
