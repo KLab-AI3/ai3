@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import enum
 from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
@@ -21,7 +20,6 @@ class Conv2D(nn.Module):
     def __init__(self, orig: nn.Conv2d, algorithm: str):
         super(Conv2D, self).__init__()
         self.algorithm = algorithm
-
         self.stride = utils.make_2d(orig.stride)
         self.dilation = utils.make_2d(
             orig.dilation)
@@ -61,7 +59,7 @@ class Conv2D(nn.Module):
 class MultiheadAttention(nn.Module):
     def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
         super(MultiheadAttention, self).__init__()
-        self.orig = orig
+        # self.orig = orig this might break some things
         self.algorithm = algorithm
         self.batch_first = orig.batch_first
         self.num_heads = orig.num_heads
@@ -74,18 +72,18 @@ class MultiheadAttention(nn.Module):
         self.add_zero_attn = orig.add_zero_attn
 
         if self.embed_dim == self.kdim and self.embed_dim == self.vdim:
-            self.q_proj_weight = orig.in_proj_weight[:self.embed_dim, :]
-            self.k_proj_weight = orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :]
-            self.v_proj_weight = orig.in_proj_weight[2*self.embed_dim:, :]
+            self.q_proj_weight = nn.Parameter(orig.in_proj_weight[:self.embed_dim, :])
+            self.k_proj_weight = nn.Parameter(orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :])
+            self.v_proj_weight = nn.Parameter(orig.in_proj_weight[2*self.embed_dim:, :])
         else:
             self.q_proj_weight = orig.q_proj_weight
             self.k_proj_weight = orig.k_proj_weight
             self.v_proj_weight = orig.v_proj_weight
 
         if orig.in_proj_bias is not None:
-            self.bias_q_in = orig.in_proj_bias[:self.embed_dim]
-            self.bias_k_in = orig.in_proj_bias[self.embed_dim:2*self.embed_dim]
-            self.bias_v_in = orig.in_proj_bias[2*self.embed_dim:]
+            self.bias_q_in = nn.Parameter(orig.in_proj_bias[:self.embed_dim])
+            self.bias_k_in = nn.Parameter(orig.in_proj_bias[self.embed_dim:2*self.embed_dim])
+            self.bias_v_in = nn.Parameter(orig.in_proj_bias[2*self.embed_dim:])
         else:
             self.bias_q_in = self.bias_k_in = self.bias_v_in = None
         self.bias_q, self.bias_k, self.bias_v = None, orig.bias_k, orig.bias_v
@@ -163,8 +161,8 @@ class MultiheadAttention(nn.Module):
 
         mem_fmt = _core.MHAMemFormat.NSE if self.batch_first else _core.MHAMemFormat.SNE
         assert callable(ops.ai3.mha)
-        if self.algorithm == _core.custom_opt_str():
-            if _core.custom_mha_handles_inputs():
+        if self.algorithm == _core.CUSTOM_OPT_STR:
+            if _core.CUSTOM_MHA_HANDLES_INPUTS:
                 attn_output = ops.ai3.mha(
                     query, key, value, self.q_proj_weight, self.k_proj_weight,
                     self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
@@ -184,7 +182,7 @@ class MultiheadAttention(nn.Module):
                     self.dropout,
                     key_padding_mask, need_weights, attn_mask,
                     average_attn_weights, is_causal, False, self.algorithm)
-                if not _core.custom_mha_projects_output():
+                if not _core.CUSTOM_MHA_PROJECTS_OUTPUT:
                     batch_size = query.shape[0 if self.batch_first else 1]
                     tgt_len = query.shape[1 if self.batch_first else 0]
                     embed_dim = query.shape[2]
@@ -233,7 +231,7 @@ op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'adaptiveavgpool2d': nn.AdaptiveAvgPool2d,
     'relu': nn.ReLU,
     'flatten': nn.Flatten,
-    'mha': nn.MultiheadAttention
+    'mha': [nn.MultiheadAttention, MultiheadAttention]
 }
 
 
@@ -330,6 +328,7 @@ def conv2d_abstract(
 
 
 def conv2d_backward(ctx, out_grad):
+    print('backward conv2d')
     input, weight = ctx.saved_tensors
     padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, _, groups = ctx.hparams
 
@@ -396,13 +395,14 @@ torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
 
-def ptr_or_none(t: torch.Tensor):
+def ptr_or_none(t: torch.Tensor) -> Optional[int]:
     return None if t is None else t.data_ptr()
 
+def cont_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
+    return None if t is None else t.contiguous()
 
-def clone_or_none(t: torch.Tensor):
+def clone_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
     return None if t is None else t.clone()
-
 
 def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
         torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
@@ -485,6 +485,7 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor,
         key_padding_mask: torch.Tensor, need_weights: bool, attn_mask:
         torch.Tensor, average_attn_weights: bool, is_causal: bool,
         need_to_project: bool, algorithm: str) -> List[torch.Tensor]:
+    out_grad = out_grad.contiguous()
     q_ptr, k_ptr, v_ptr, do_ptr = query.data_ptr(
     ), key.data_ptr(), value.data_ptr(), out_grad.data_ptr()
     q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
@@ -510,16 +511,15 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor,
         num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
-    assert (len(out) == _core.mha_num_grad())
-
-    return [torch.frombuffer(grad, dtype=query.dtype).view( grad.shape) if grad
+    assert (len(out) == _core.MHA_NUM_GRAD)
+    return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) if grad
             is not None else None for grad in out] #type: ignore
 
 def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
         torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
         torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
-        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, *_) -> List[torch.Tensor]:
-    del out_grad
+        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, *args) -> List[torch.Tensor]:
+    del out_grad, args
     return [torch.empty(grad.shape) if grad
             is not None else None for grad in [query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]] #type: ignore
 
@@ -527,7 +527,7 @@ def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor, key: torc
 torch.library.custom_op(
     'ai3::mha_backward', mha_backward, mutates_args=())
 torch.library.register_fake(
-    'ai3::mha_backward', mha_backward_abstract) # would just have all the same shapes in the order
+    'ai3::mha_backward', mha_backward_abstract)
 
 def mha_backward_wrap(ctx, out_grad):
     (query, key, value,
@@ -553,9 +553,9 @@ def mha_backward_wrap(ctx, out_grad):
 
 
 torch.library.custom_op(
-    'ai3::mha', mha, mutates_args=())
+        'ai3::mha', mha, mutates_args=())
 torch.library.register_fake(
-    'ai3::mha', mha_abstract)
+        'ai3::mha', mha_abstract)
 torch.library.register_autograd(
     'ai3::mha', mha_backward_wrap, setup_context=mha_setup_context)
 

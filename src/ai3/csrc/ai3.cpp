@@ -181,7 +181,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
 
 class ReLU : virtual public Layer {
   public:
-    ReLU(const std::string algorithm) : algorithm(algorithm){};
+    ReLU(const std::string algorithm) : algorithm(algorithm) {};
 
     FORWARD_ALIASES
 
@@ -757,20 +757,16 @@ PYBIND11_MODULE(_core, m) {
         .value("Float64", ScalarType::Float64)
         .export_values();
     m.def("output_hw_for_2d", &output_hw_for_2d_no_ceil);
-    m.def("using_mps_and_metal", [] { return USING_MPS_METAL; });
-    m.def("using_sycl", [] { return USING_SYCL; });
-    m.def("using_cublas", [] { return USING_CUBLAS; });
-    m.def("using_cudnn", [] { return USING_CUDNN; });
-    m.def("is_debug_build", [] { return DEBUG_BUILD; });
-    m.def("default_opt_str", [] { return DEFAULT_OPT_STR; });
-    m.def("custom_opt_str", [] { return CUSTOM_OPT_STR; });
-    m.def("mha_num_grad", [] { return mha::NUM_GRAD; });
-    m.def("custom_mha_handles_inputs", [] {
-        return CUSTOM_MHA_HANDLES_INPUTS.has_value() &&
-               *CUSTOM_MHA_HANDLES_INPUTS;
-    });
-    m.def("custom_mha_project_output", [] {
-        return CUSTOM_MHA_PROJECTS_OUTPUT.has_value() &&
-               *CUSTOM_MHA_PROJECTS_OUTPUT;
-    });
+    m.attr("USING_MPS_AND_METAL") = USING_MPS_METAL;
+    m.attr("USING_SYCL") = USING_SYCL;
+    m.attr("USING_CUBLAS") = USING_CUBLAS;
+    m.attr("USING_CUDNN") = USING_CUDNN;
+    m.attr("IS_DEBUG_BUILD") = DEBUG_BUILD;
+    m.attr("CUSTOM_OPT_STR") = CUSTOM_OPT_STR;
+    m.attr("DEFAULT_OPT_STR") = DEFAULT_OPT_STR;
+    m.attr("MHA_NUM_GRAD") = mha::NUM_GRAD;
+    m.attr("CUSTOM_MHA_HANDLES_INPUTS") =
+        CUSTOM_MHA_HANDLES_INPUTS.has_value() && *CUSTOM_MHA_HANDLES_INPUTS;
+    m.attr("CUSTOM_MHA_PROJECTS_OUTPUT") =
+        CUSTOM_MHA_PROJECTS_OUTPUT.has_value() && *CUSTOM_MHA_PROJECTS_OUTPUT;
 }

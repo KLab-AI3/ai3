@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import ai3
 import platform
+from test import compare_tensors
 
 PASS_MES = 'ai3 and torch Models compiled with torch.compile produce same outputs '
 
@@ -38,10 +39,80 @@ def conv2d():
     orig = ConvNet()
     tar = orig(input_data)
 
-    ai3.swap_conv2d(orig, 'direct')
+    ai3.swap_conv2d(orig)
     swap_comped = compile(orig)
     swap_comped_out = swap_comped(input_data)
 
     assert torch.allclose(
         swap_comped_out, tar, atol=1e-6)
     print(PASS_MES + 'conv2d')
+
+class MHA(nn.Module):
+    def __init__(self, embed_dim=512, num_heads=8, kdim=None, vdim=None, bias=True,
+                 add_bias_kv=False, batch_first=True, add_zero_attn=False, dtype=None):
+        super(MHA, self).__init__()
+        self.attn1 = nn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            kdim=kdim or embed_dim,
+            vdim=vdim or embed_dim,
+            bias=bias,
+            add_bias_kv=add_bias_kv,
+            batch_first=batch_first,
+            add_zero_attn=add_zero_attn,
+            dtype=dtype
+        )
+
+        self.norm1 = nn.LayerNorm(embed_dim)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.ReLU(),
+            nn.Linear(embed_dim * 4, embed_dim),
+        )
+
+        self.norm2 = nn.LayerNorm(embed_dim)
+
+        self.attn2 = nn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            kdim=kdim or embed_dim,
+            vdim=vdim or embed_dim,
+            bias=bias,
+            add_bias_kv=add_bias_kv,
+            batch_first=batch_first,
+            add_zero_attn=add_zero_attn,
+            dtype=dtype
+        )
+
+        self.norm3 = nn.LayerNorm(embed_dim)
+
+    def forward(self, x, attn_mask=None, key_padding_mask=None):
+        attn_output1, _ = self.attn1(x, x, x,
+                                   attn_mask=attn_mask,
+                                   key_padding_mask=key_padding_mask, need_weights=False)
+        x = self.norm1(x + attn_output1)
+
+        ffn_output = self.ffn(x)
+        x = self.norm2(x + ffn_output)
+        attn_output2, _ = self.attn2(x, x, x,
+                                   attn_mask=attn_mask,
+                                   key_padding_mask=key_padding_mask, need_weights=False)
+        x = self.norm3(x + attn_output2)
+        return x
+
+def mha():
+    input_data = torch.randn(2, 10, 512)
+
+    orig = MHA(embed_dim=512, num_heads=8)
+    orig.eval()
+    tar = orig(input_data)
+
+    ai3.swap_mha(orig)
+    swap_comped = compile(orig)
+    swap_comped_out = swap_comped(input_data)
+
+    compare_tensors(swap_comped_out, tar)
+    assert torch.allclose(
+        swap_comped_out, tar, atol=1e-6)
+    print(PASS_MES + 'mha')

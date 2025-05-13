@@ -34,11 +34,9 @@ SUPPORTED_ALGORITHMS = {
     'relu': ['direct'],
     'flatten': ['direct'],
 }
-DEFAULT_OPTION = _core.default_opt_str()
-CUSTOM_OPTION = _core.custom_opt_str()
 for key in SUPPORTED_ALGORITHMS:
-    SUPPORTED_ALGORITHMS[key].append(DEFAULT_OPTION)
-    SUPPORTED_ALGORITHMS[key].append(CUSTOM_OPTION)
+    SUPPORTED_ALGORITHMS[key].append(_core.DEFAULT_OPT_STR)
+    SUPPORTED_ALGORITHMS[key].append(_core.CUSTOM_OPT_STR)
 
 
 def check_callable_params_with_shape(

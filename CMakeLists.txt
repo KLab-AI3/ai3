@@ -34,6 +34,7 @@ set(CSRC_FILES
 
 set(CUDA_FILES)
 file(GLOB CUDA_FILES "${CSRC_DIR}/*.cu")
+list(APPEND CUDA_FILES "${CSRC_DIR}/cuda_utils.cpp")
 
 set(USE_MPS_METAL NO)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -157,13 +158,13 @@ function(use_supported_platform_impls op use_non_plain)
 endfunction()
 
 use_supported_platform_impls("mha" YES)
-use_supported_platform_impls("conv2d" NO)
-use_supported_platform_impls("linear" NO)
-use_supported_platform_impls("avgpool2d" NO)
-use_supported_platform_impls("adaptiveavgpool2d" NO)
-use_supported_platform_impls("maxpool2d" NO)
-use_supported_platform_impls("relu" NO)
-use_supported_platform_impls("flatten" NO)
+use_supported_platform_impls("conv2d" YES)
+use_supported_platform_impls("linear" YES)
+use_supported_platform_impls("avgpool2d" YES)
+use_supported_platform_impls("adaptiveavgpool2d" YES)
+use_supported_platform_impls("maxpool2d" YES)
+use_supported_platform_impls("relu" YES)
+use_supported_platform_impls("flatten" YES)
 
 set(CUDA_ENABLED NO)
 if(CUDA_FILES AND CUDAToolkit_FOUND)
@@ -208,6 +209,10 @@ endif()
 
 if(USE_SYCL)
     target_compile_definitions(_core PRIVATE USE_SYCL)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "debug")
+    target_compile_definitions(_core PRIVATE DEBUG_MODE)
 endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/custom.cmake")

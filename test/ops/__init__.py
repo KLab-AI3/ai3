@@ -4,12 +4,12 @@ _ = swap_torch
 
 
 def run_conv2d():
-    for m in [opcheck, compile, backward, train]:
+    for m in [backward, opcheck, compile, backward, train]:
         m.conv2d()
 
 
 def run_mha():
-    for m in [opcheck, compile, backward, train]:
+    for m in [backward, opcheck, compile, backward, train]: # TODO fix
         m.mha()
 
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #include <cstdio>
 #include <cuda_runtime.h>
 #include <cuda_utils.cuh>
@@ -39,29 +41,15 @@ void transpose_call(dtype *output, dtype *input, const int in_rows,
     const int total_elements = in_rows * in_columns;
     const int block = 256;
     const int grid = (total_elements + block - 1) / block;
+    // printf("on device dif\n");
+    // if (in_rows > 3) {
+    //     printf("%f\n", input[0]);
+    //     printf("%f\n", input[1]);
+    //     printf("%f\n", input[2]);
+    // }
 
     transpose<dtype>
         <<<grid, block, 0, stream>>>(output, input, in_rows, in_columns);
-}
-
-StreamSwapper::StreamSwapper() : current(0) {
-    CUDA_CHECK(cudaStreamCreate(&streams[0]));
-    CUDA_CHECK(cudaStreamCreate(&streams[1]));
-}
-
-StreamSwapper::~StreamSwapper() {
-    CUDA_CHECK(cudaStreamDestroy(streams[0]));
-    CUDA_CHECK(cudaStreamDestroy(streams[1]));
-}
-
-void StreamSwapper::sync() {
-    CUDA_CHECK(cudaStreamSynchronize(streams[0]));
-    CUDA_CHECK(cudaStreamSynchronize(streams[1]));
-}
-
-cudaStream_t StreamSwapper::operator()() {
-    current = 1 - current;
-    return streams[current];
 }
 
 template void fill_identity_call<float>(float *, const int, const int,

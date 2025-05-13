@@ -67,7 +67,7 @@ Example:
 """
 
 
-DEFAULT_ALGOS: Mapping[str, str] = {key: utils.DEFAULT_OPTION for key in [
+DEFAULT_ALGOS: Mapping[str, str] = {key: _core.DEFAULT_OPT_STR for key in [
     'conv2d', 'mha', 'linear', 'relu', 'maxpool2d', 'avgpool2d', 'adaptiveavgpool2d', 'flatten']}
 
 SUPPORTED_ALGORITHMS = utils.SUPPORTED_ALGORITHMS
@@ -217,7 +217,7 @@ def convert(module,
 
 
 def swap_conv2d(module,
-                algos: Optional['AlgorithmicSelector'] = None,
+                algos: Optional[AlgorithmicSelector] = None,
                 sample_input_shape: Optional[Sequence[int]] = None,
                 *,
                 swap_with=None):
@@ -230,7 +230,7 @@ def swap_conv2d(module,
 
 
 def swap_mha(module,
-             algos: Optional['AlgorithmicSelector'] = None,
+             algos: Optional[AlgorithmicSelector] = None,
              sample_input_shape: Optional[Sequence[int]] = None,
              *,
              swap_with=None):
@@ -244,19 +244,19 @@ def swap_mha(module,
 
 def using_mps_and_metal() -> bool:
     """Whether the implementations can use *MPS* and *Metal*"""
-    return _core.using_mps_and_metal()
+    return _core.USING_MPS_AND_METAL
 
 
 def using_sycl() -> bool:
     """Whether the implementations can use *SYCL*"""
-    return _core.using_sycl()
+    return _core.USING_SYCL
 
 
 def using_cudnn() -> bool:
     """Whether the implementations can use *cuDNN*"""
-    return _core.using_cudnn()
+    return _core.USING_CUDNN
 
 
 def using_cublas() -> bool:
     """Whether the implementations can use *cuBLAS*"""
-    return _core.using_cublas()
+    return _core.USING_CUBLAS
