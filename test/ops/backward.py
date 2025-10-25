@@ -51,10 +51,9 @@ def test_with(input, model, op, mes):
         if not torch.allclose(grad_torch[name], grad_ai3[name]):
             print(
                 f'Gradients for {name} on {mes} differ')
+            print('first 10 torch:', ' '.join(map(str, grad_torch[name].flatten()[:10].tolist())))
+            print('first 10 ai3:', ' '.join(map(str, grad_ai3[name].flatten()[:10].tolist())))
             same_gradients = False
-        else:
-            print('first 10 torch:', grad_torch[name].flatten()[:10])
-            print('first 10 ai3:  ', grad_ai3[name].flatten()[:10])
 
     if same_gradients:
         print(
