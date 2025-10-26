@@ -181,7 +181,7 @@ class AdaptiveAvgPool2D : virtual public Layer {
 
 class ReLU : virtual public Layer {
   public:
-    ReLU(const std::string algorithm) : algorithm(algorithm) {};
+    ReLU(const std::string algorithm) : algorithm(algorithm){};
 
     FORWARD_ALIASES
 

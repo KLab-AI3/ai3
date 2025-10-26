@@ -6,12 +6,14 @@ import torch.nn.functional as F
 CONV = 'conv'
 MHA = 'mha'
 
+
 def get_grad(model, input, target):
     out = model(input) if isinstance(input, torch.Tensor) else model(*input)
     loss = F.mse_loss(out, target)
     model.zero_grad()
     loss.backward(retain_graph=True)
     return {name: param.grad.clone() for name, param in model.named_parameters()}
+
 
 def test_with(input, model, op, mes):
     if isinstance(input, torch.Tensor):
@@ -31,28 +33,30 @@ def test_with(input, model, op, mes):
     grad_ai3 = get_grad(model, input, target)
 
     same_gradients = True
-    for name in grad_torch: # TODO after this works put it in the get_grad function
+    for name in grad_torch:  # TODO after this works put it in the get_grad function
         if op == MHA:
             if name == 'attn.in_proj_weight':
                 grad_ai3['attn.in_proj_weight'] = torch.cat([
                     grad_ai3['attn.q_proj_weight'],
                     grad_ai3['attn.k_proj_weight'],
                     grad_ai3['attn.v_proj_weight'],
-                    ], dim=0)
+                ], dim=0)
             elif name == 'attn.in_proj_bias':
                 grad_ai3['attn.in_proj_bias'] = torch.cat([
                     grad_ai3['attn.bias_q_in'],
                     grad_ai3['attn.bias_k_in'],
                     grad_ai3['attn.bias_v_in'],
-                    ], dim=0)
+                ], dim=0)
             grad_ai3['attn.out_proj.weight'] = grad_ai3['attn.out_proj_weight']
             grad_ai3['attn.out_proj.bias'] = grad_ai3['attn.out_proj_bias']
 
         if not torch.allclose(grad_torch[name], grad_ai3[name]):
             print(
                 f'Gradients for {name} on {mes} differ')
-            print('first 10 torch:', ' '.join(map(str, grad_torch[name].flatten()[:10].tolist())))
-            print('first 10 ai3:', ' '.join(map(str, grad_ai3[name].flatten()[:10].tolist())))
+            print('first 10 torch:', ' '.join(
+                map(str, grad_torch[name].flatten()[:10].tolist())))
+            print('first 10 ai3:', ' '.join(
+                map(str, grad_ai3[name].flatten()[:10].tolist())))
             same_gradients = False
 
     if same_gradients:
@@ -61,6 +65,7 @@ def test_with(input, model, op, mes):
     else:
         print(
             f'Gradients are different for {op} on {mes}')
+
 
 def conv2d():
     class ConvModel(torch.nn.Module):
@@ -82,8 +87,10 @@ def conv2d():
 
 def mha():
     class MHAModel(torch.nn.Module):
-        def __init__(self, embed_dim=512, num_heads=8, kdim=None, vdim=None, bias=True,
-                     add_bias_kv=False, batch_first=True, add_zero_attn=False, dtype=None):
+        def __init__(
+                self, embed_dim=512, num_heads=8, kdim=None, vdim=None,
+                bias=True, add_bias_kv=False, batch_first=True,
+                add_zero_attn=False, dtype=None):
             super(MHAModel, self).__init__()
             self.attn = torch.nn.MultiheadAttention(
                 embed_dim=embed_dim,
@@ -100,9 +107,29 @@ def mha():
         def forward(self, q, k, v):
             return self.attn(q, k, v, need_weights=False)[0]
 
-    test_with((torch.randn(10, 50, 512), torch.randn(10, 50, 512), torch.randn(10, 50, 512)), MHAModel(512), MHA, 'basic')
-    test_with((torch.randn(50, 10, 512), torch.randn(50, 10, 512), torch.randn(50, 10, 512)), MHAModel(512, batch_first=False), MHA, 'basic no batch first')
-    test_with((torch.randn(10, 50, 300), torch.randn(10, 50, 200), torch.randn(10, 50, 150)), MHAModel(300, 5, 200, 150), MHA, 'different kdim and vdim')
+    test_with(
+        (torch.randn(10, 50, 512),
+         torch.randn(10, 50, 512),
+         torch.randn(10, 50, 512)),
+        MHAModel(512),
+        MHA, 'basic')
+    test_with(
+        (torch.randn(50, 10, 512),
+         torch.randn(50, 10, 512),
+         torch.randn(50, 10, 512)),
+        MHAModel(512, batch_first=False),
+        MHA, 'basic no batch first')
+    test_with(
+        (torch.randn(10, 50, 300),
+         torch.randn(10, 50, 200),
+         torch.randn(10, 50, 150)),
+        MHAModel(300, 5, 200, 150),
+        MHA, 'different kdim and vdim')
     # TODO might be possible to support gradients for the data if we don't project?
     # TODO do attn_mask and causal
-    test_with((torch.randn(10, 60, 80), torch.randn(10, 60, 80), torch.randn(10, 60, 80)), MHAModel(80, 5, add_bias_kv=True, add_zero_attn=True), MHA, 'batch = 10')
+    test_with(
+        (torch.randn(10, 60, 80),
+         torch.randn(10, 60, 80),
+         torch.randn(10, 60, 80)),
+        MHAModel(80, 5, add_bias_kv=True, add_zero_attn=False),
+        MHA, 'with bias_kv')

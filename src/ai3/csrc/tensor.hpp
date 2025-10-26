@@ -89,7 +89,7 @@ class Tensor {
      * @param own Whether to take ownership of the data.
      *
      * @return Tensor object if data_address has a value; otherwise,
-     * *std::nullopt*. 
+     * *std::nullopt*.
      */
     static std::optional<Tensor>
     from_optional(const std::optional<intptr_t> &data_address,

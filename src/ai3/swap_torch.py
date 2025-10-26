@@ -72,9 +72,12 @@ class MultiheadAttention(nn.Module):
         self.add_zero_attn = orig.add_zero_attn
 
         if self.embed_dim == self.kdim and self.embed_dim == self.vdim:
-            self.q_proj_weight = nn.Parameter(orig.in_proj_weight[:self.embed_dim, :])
-            self.k_proj_weight = nn.Parameter(orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :])
-            self.v_proj_weight = nn.Parameter(orig.in_proj_weight[2*self.embed_dim:, :])
+            self.q_proj_weight = nn.Parameter(
+                orig.in_proj_weight[: self.embed_dim, :])
+            self.k_proj_weight = nn.Parameter(
+                orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :])
+            self.v_proj_weight = nn.Parameter(
+                orig.in_proj_weight[2*self.embed_dim:, :])
         else:
             self.q_proj_weight = orig.q_proj_weight
             self.k_proj_weight = orig.k_proj_weight
@@ -82,7 +85,8 @@ class MultiheadAttention(nn.Module):
 
         if orig.in_proj_bias is not None:
             self.bias_q_in = nn.Parameter(orig.in_proj_bias[:self.embed_dim])
-            self.bias_k_in = nn.Parameter(orig.in_proj_bias[self.embed_dim:2*self.embed_dim])
+            self.bias_k_in = nn.Parameter(
+                orig.in_proj_bias[self.embed_dim:2*self.embed_dim])
             self.bias_v_in = nn.Parameter(orig.in_proj_bias[2*self.embed_dim:])
         else:
             self.bias_q_in = self.bias_k_in = self.bias_v_in = None
@@ -189,11 +193,9 @@ class MultiheadAttention(nn.Module):
                     assert isinstance(attn_output, torch.Tensor)
                     attn_output = self.handle_outputs(
                         attn_output, batch_size, tgt_len, embed_dim)
-        elif not (self.bias_k is not None or self.bias_v is not None or
-                  self.add_zero_attn or is_causal or attn_mask is not None or
-                  key_padding_mask is not None or need_weights or (need_weights
-                                                                   and
-                                                                   average_attn_weights)):
+        elif (self.bias_k is None and self.bias_v is None and not
+              self.add_zero_attn and not is_causal and attn_mask is None and
+              key_padding_mask is None and not need_weights):
             attn_output = ops.ai3.mha(
                 query, key, value, self.q_proj_weight, self.k_proj_weight,
                 self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
@@ -398,11 +400,14 @@ torch.library.register_autograd(
 def ptr_or_none(t: torch.Tensor) -> Optional[int]:
     return None if t is None else t.data_ptr()
 
+
 def cont_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
     return None if t is None else t.contiguous()
 
+
 def clone_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
     return None if t is None else t.clone()
+
 
 def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
         torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
@@ -476,15 +481,19 @@ def mha_setup_context(ctx, inputs, output):
                        attn_mask, average_attn_weights, is_causal,
                        need_to_project, algorithm)
 
-def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
-        torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
-        torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
-        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, mem_fmt: int,
-        k_bias: torch.Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
-        num_heads: int, k_dim: int, v_dim: int, embed_dim: int, dropout: float,
-        key_padding_mask: torch.Tensor, need_weights: bool, attn_mask:
-        torch.Tensor, average_attn_weights: bool, is_causal: bool,
-        need_to_project: bool, algorithm: str) -> List[torch.Tensor]:
+
+def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
+                 Tensor, value: torch.Tensor, q_proj: torch.Tensor,
+                 k_proj: torch.Tensor, v_proj: torch.Tensor,
+                 out_proj: torch.Tensor, q_proj_bias: torch.Tensor,
+                 k_proj_bias: torch.Tensor, v_proj_bias: torch.Tensor,
+                 out_proj_bias: torch.Tensor, mem_fmt: int, k_bias: torch.
+                 Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
+                 num_heads: int, k_dim: int, v_dim: int, embed_dim: int,
+                 dropout: float, key_padding_mask: torch.Tensor,
+                 need_weights: bool, attn_mask: torch.Tensor,
+                 average_attn_weights: bool, is_causal: bool,
+                 need_to_project: bool, algorithm: str) -> List[torch.Tensor]:
     out_grad = out_grad.contiguous()
     q_ptr, k_ptr, v_ptr, do_ptr = query.data_ptr(
     ), key.data_ptr(), value.data_ptr(), out_grad.data_ptr()
@@ -513,21 +522,26 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor,
         need_to_project, algorithm)
     assert (len(out) == _core.MHA_NUM_GRAD)
     return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) if grad
-            is not None else None for grad in out] #type: ignore
+            is not None else None for grad in out]  # type: ignore
 
-def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
-        torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
-        torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
-        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, *args) -> List[torch.Tensor]:
+
+def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor,
+                          key: torch.Tensor, value: torch.Tensor,
+                          q_proj: torch.Tensor, k_proj: torch.Tensor,
+                          v_proj: torch.Tensor, out_proj: torch.Tensor,
+                          q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
+                          v_proj_bias: torch.Tensor, out_proj_bias: torch.
+                          Tensor, *args) -> List[torch.Tensor]:
     del out_grad, args
     return [torch.empty(grad.shape) if grad
-            is not None else None for grad in [query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]] #type: ignore
+            is not None else None for grad in [query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]]  # type: ignore
 
 
 torch.library.custom_op(
     'ai3::mha_backward', mha_backward, mutates_args=())
 torch.library.register_fake(
     'ai3::mha_backward', mha_backward_abstract)
+
 
 def mha_backward_wrap(ctx, out_grad):
     (query, key, value,
@@ -540,22 +554,21 @@ def mha_backward_wrap(ctx, out_grad):
      embed_dim, dropout, key_padding_mask, need_weights,
      attn_mask, average_attn_weights, is_causal,
      need_to_project, algorithm) = ctx.hparams
-    assert(callable(ops.ai3.mha_backward))
-    grads = ops.ai3.mha_backward(out_grad, query, key, value, q_proj, k_proj,
-                                v_proj, out_proj, q_proj_bias, k_proj_bias,
-                                v_proj_bias, out_proj_bias, mem_fmt, k_bias,
-                                v_bias, add_zero_attn, num_heads, k_dim, v_dim,
-                                embed_dim, dropout, key_padding_mask,
-                                need_weights, attn_mask, average_attn_weights,
-                                is_causal, need_to_project, algorithm)
+    assert (callable(ops.ai3.mha_backward))
+    grads = ops.ai3.mha_backward(
+        out_grad, query, key, value, q_proj, k_proj, v_proj, out_proj,
+        q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias, mem_fmt, k_bias,
+        v_bias, add_zero_attn, num_heads, k_dim, v_dim, embed_dim, dropout,
+        key_padding_mask, need_weights, attn_mask, average_attn_weights,
+        is_causal, need_to_project, algorithm)
     assert isinstance(grads, Sequence)
     return (*grads, *((None,) * 16))
 
 
 torch.library.custom_op(
-        'ai3::mha', mha, mutates_args=())
+    'ai3::mha', mha, mutates_args=())
 torch.library.register_fake(
-        'ai3::mha', mha_abstract)
+    'ai3::mha', mha_abstract)
 torch.library.register_autograd(
     'ai3::mha', mha_backward_wrap, setup_context=mha_setup_context)
 

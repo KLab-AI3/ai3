@@ -47,9 +47,12 @@ def conv2d():
         swap_comped_out, tar, atol=1e-6)
     print(PASS_MES + 'conv2d')
 
+
 class MHA(nn.Module):
-    def __init__(self, embed_dim=512, num_heads=8, kdim=None, vdim=None, bias=True,
-                 add_bias_kv=False, batch_first=True, add_zero_attn=False, dtype=None):
+    def __init__(
+            self, embed_dim=512, num_heads=8, kdim=None, vdim=None, bias=True,
+            add_bias_kv=False, batch_first=True, add_zero_attn=False,
+            dtype=None):
         super(MHA, self).__init__()
         self.attn1 = nn.MultiheadAttention(
             embed_dim=embed_dim,
@@ -88,18 +91,19 @@ class MHA(nn.Module):
         self.norm3 = nn.LayerNorm(embed_dim)
 
     def forward(self, x, attn_mask=None, key_padding_mask=None):
-        attn_output1, _ = self.attn1(x, x, x,
-                                   attn_mask=attn_mask,
-                                   key_padding_mask=key_padding_mask, need_weights=False)
+        attn_output1, _ = self.attn1(
+            x, x, x, attn_mask=attn_mask, key_padding_mask=key_padding_mask,
+            need_weights=False)
         x = self.norm1(x + attn_output1)
 
         ffn_output = self.ffn(x)
         x = self.norm2(x + ffn_output)
-        attn_output2, _ = self.attn2(x, x, x,
-                                   attn_mask=attn_mask,
-                                   key_padding_mask=key_padding_mask, need_weights=False)
+        attn_output2, _ = self.attn2(
+            x, x, x, attn_mask=attn_mask, key_padding_mask=key_padding_mask,
+            need_weights=False)
         x = self.norm3(x + attn_output2)
         return x
+
 
 def mha():
     input_data = torch.randn(2, 10, 512)

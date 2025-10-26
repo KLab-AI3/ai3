@@ -4,6 +4,7 @@ from ai3 import _core
 
 PASS_MES = 'Passed opcheck for '
 
+
 def conv2d():
     input_size = (1, 3, 224, 224)
     kernel_size = (3, 3, 5, 5)
@@ -18,7 +19,7 @@ def conv2d():
 
     assert callable(ops.ai3.conv2d)
     for samp in samples:
-        torch.library.opcheck(ops.ai3.conv2d, samp) # type: ignore
+        torch.library.opcheck(ops.ai3.conv2d, samp)  # type: ignore
     print(PASS_MES + 'conv2d')
 
 
@@ -33,8 +34,8 @@ def mha():
     for grad in [False, True]:
         for mem_format in [_core.MHAMemFormat.NSE, _core.MHAMemFormat.SNE]:
 
-
-            first_two = (batch_size, seq_len) if mem_format == _core.MHAMemFormat.NSE else (seq_len, batch_size)
+            first_two = (batch_size, seq_len) if mem_format == _core.MHAMemFormat.NSE else (
+                seq_len, batch_size)
 
             query = torch.randn(*first_two, embed_dim, requires_grad=grad)
             key = torch.randn(*first_two, k_dim, requires_grad=grad)
