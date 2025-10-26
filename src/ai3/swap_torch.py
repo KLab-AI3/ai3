@@ -330,7 +330,6 @@ def conv2d_abstract(
 
 
 def conv2d_backward(ctx, out_grad):
-    print('backward conv2d')
     input, weight = ctx.saved_tensors
     padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, _, groups = ctx.hparams
 
@@ -511,6 +510,8 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
     attn_mask_ptr = ptr_or_none(attn_mask)
     key_padding_mask_ptr = ptr_or_none(key_padding_mask)
 
+    # TODO different in_proj_bias and in_proj_weight because I need them from
+    # the bias_k and bias_v stuff?
     out = _core.mha_backward(
         do_ptr, q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
         _core.MHAMemFormat(mem_fmt),
@@ -521,8 +522,17 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
     assert (len(out) == _core.MHA_NUM_GRAD)
-    return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) if grad
-            is not None else None for grad in out]  # type: ignore
+    if not need_to_project:
+        for i in (3, 4, 5, 7, 8, 9):
+            out[i] = torch.zeros(out[i].shape)
+
+    return [
+        grad if isinstance(grad, torch.Tensor)
+        else torch.frombuffer(grad, dtype=query.dtype).view(grad.shape)
+        if grad is not None
+        else None
+        for grad in out
+    ]  # type: ignore
 
 
 def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor,

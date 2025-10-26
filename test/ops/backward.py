@@ -59,7 +59,7 @@ def test_with(input, model, op, mes):
                 map(str, grad_ai3[name].flatten()[:10].tolist())))
             same_gradients = False
         else:
-            print(f'same gradients for {name} on {mes}')
+            print(f'  same gradients for {name} on {mes}')
 
     if same_gradients:
         print(
