@@ -48,7 +48,8 @@ def test_with(input, model, op, mes):
                     grad_ai3['attn.bias_v_in'],
                 ], dim=0)
             grad_ai3['attn.out_proj.weight'] = grad_ai3['attn.out_proj_weight']
-            grad_ai3['attn.out_proj.bias'] = grad_ai3['attn.out_proj_bias']
+            if 'attn.out_proj_bias' in grad_ai3:
+                grad_ai3['attn.out_proj.bias'] = grad_ai3['attn.out_proj_bias']
 
         if not torch.allclose(grad_torch[name], grad_ai3[name]):
             print(

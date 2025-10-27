@@ -490,40 +490,45 @@ operate(Tensor query, Tensor key, Tensor value,
             out[5] = std::optional<Tensor>(std::move(dv_proj));
             out[6] = std::optional<Tensor>(std::move(do_proj));
 
-            // TODO I think no bias and no proj will fail will fail
-            if (proj_bias) {
-                Tensor dq_bias(std::move(q_bias_in->shape),
-                               q_bias_in->scalar_type);
-                Tensor dk_bias(std::move(k_bias_in->shape),
-                               k_bias_in->scalar_type);
-                Tensor dv_bias(std::move(v_bias_in->shape),
-                               v_bias_in->scalar_type);
-                Tensor do_bias(std::move(o_bias->shape), o_bias->scalar_type);
-                if (need_to_project_input) {
-                    dev_dw_to_host<dtype>(handle, attn_desc,
-                                          CUDNN_MH_ATTN_Q_BIASES, false,
-                                          size_weights, weight_desc, dev_dw,
-                                          dq_bias.data, 1, 1, q_bias_len, ss());
-                    dev_dw_to_host<dtype>(handle, attn_desc,
-                                          CUDNN_MH_ATTN_K_BIASES, false,
-                                          size_weights, weight_desc, dev_dw,
-                                          dk_bias.data, 1, 1, k_bias_len, ss());
-                    dev_dw_to_host<dtype>(handle, attn_desc,
-                                          CUDNN_MH_ATTN_V_BIASES, false,
-                                          size_weights, weight_desc, dev_dw,
-                                          dv_bias.data, 1, 1, v_bias_len, ss());
-                } else {
-                    std::memset(dq_bias.data, 0,
-                                dq_bias.count() * sizeof(dtype));
-                    std::memset(dk_bias.data, 0,
-                                dk_bias.count() * sizeof(dtype));
-                    std::memset(dv_bias.data, 0,
-                                dv_bias.count() * sizeof(dtype));
-                }
+            Tensor dq_bias(std::vector{embed_q}, q_bias_in
+                                                     ? q_bias_in->scalar_type
+                                                     : query.scalar_type);
 
+            Tensor dk_bias(std::vector{embed_k}, k_bias_in
+                                                     ? k_bias_in->scalar_type
+                                                     : key.scalar_type);
+
+            Tensor dv_bias(std::vector{embed_v}, v_bias_in
+                                                     ? v_bias_in->scalar_type
+                                                     : value.scalar_type);
+
+            Tensor do_bias(std::vector{embed_o},
+                           o_bias ? o_bias->scalar_type : query.scalar_type);
+            if (proj_bias && need_to_project_input) {
+                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_BIASES,
+                                      false, size_weights, weight_desc, dev_dw,
+                                      dq_bias.data, 1, 1, q_bias_len, ss());
+                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_K_BIASES,
+                                      false, size_weights, weight_desc, dev_dw,
+                                      dk_bias.data, 1, 1, k_bias_len, ss());
+                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_V_BIASES,
+                                      false, size_weights, weight_desc, dev_dw,
+                                      dv_bias.data, 1, 1, v_bias_len, ss());
+            } else {
+                std::memset(dq_bias.data, 0, dq_bias.count() * sizeof(dtype));
+                std::memset(dk_bias.data, 0, dk_bias.count() * sizeof(dtype));
+                std::memset(dv_bias.data, 0, dv_bias.count() * sizeof(dtype));
+            }
+
+            if (proj_bias) {
                 dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_BIASES,
                                       false, size_weights, weight_desc, dev_dw,
                                       do_bias.data, 1, 1, o_bias_len, ss());
+            } else {
+                std::memset(do_bias.data, 0, do_bias.count() * sizeof(dtype));
+            }
+
+            if (proj_bias) {
                 out[7] = std::optional<Tensor>(std::move(dq_bias));
                 out[8] = std::optional<Tensor>(std::move(dk_bias));
                 out[9] = std::optional<Tensor>(std::move(dv_bias));
