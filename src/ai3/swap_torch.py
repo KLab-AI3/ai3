@@ -522,17 +522,6 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
     assert (len(out) == _core.MHA_NUM_GRAD)
-    # if not need_to_project:
-    #     for i in (3, 4, 5, 7, 8, 9):
-    #         out[i] = torch.zeros(out[i].shape)
-    #
-    # return [
-    #     grad if isinstance(grad, torch.Tensor)
-    #     else torch.frombuffer(grad, dtype=query.dtype).view(grad.shape)
-    #     if grad is not None
-    #     else None
-    #     for grad in out
-    # ]  # type: ignore
     return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) if grad
             is not None else None for grad in out]  # type: ignore
 

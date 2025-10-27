@@ -454,8 +454,6 @@ operate(Tensor query, Tensor key, Tensor value,
         CUDA_CHECK(cudaMemcpyAsync(dv.data, dev_dv, v_num_elem * sizeof(dtype),
                                    cudaMemcpyDeviceToHost, ss()));
 
-        ss.sync(); // TODO remove
-
         out[0] = std::optional<Tensor>(std::move(dq));
         out[1] = std::optional<Tensor>(std::move(dk));
         out[2] = std::optional<Tensor>(std::move(dv));
@@ -479,15 +477,20 @@ operate(Tensor query, Tensor key, Tensor value,
                     handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true,
                     size_weights, weight_desc, dev_dw, dv_proj.data, num_heads,
                     proj_v, embed_v, ss());
-                out[3] = std::optional<Tensor>(std::move(dq_proj));
-                out[4] = std::optional<Tensor>(std::move(dk_proj));
-                out[5] = std::optional<Tensor>(std::move(dv_proj));
+            } else {
+                std::memset(dq_proj.data, 0, dq_proj.count() * sizeof(dtype));
+                std::memset(dk_proj.data, 0, dk_proj.count() * sizeof(dtype));
+                std::memset(dv_proj.data, 0, dv_proj.count() * sizeof(dtype));
             }
             buffers[3] = dev_dw_to_host<dtype>(
                 handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true, size_weights,
                 weight_desc, dev_dw, do_proj.data, 1, proj_o, embed_o, ss());
+            out[3] = std::optional<Tensor>(std::move(dq_proj));
+            out[4] = std::optional<Tensor>(std::move(dk_proj));
+            out[5] = std::optional<Tensor>(std::move(dv_proj));
             out[6] = std::optional<Tensor>(std::move(do_proj));
 
+            // TODO I think no bias and no proj will fail will fail
             if (proj_bias) {
                 Tensor dq_bias(std::move(q_bias_in->shape),
                                q_bias_in->scalar_type);
@@ -509,13 +512,21 @@ operate(Tensor query, Tensor key, Tensor value,
                                           CUDNN_MH_ATTN_V_BIASES, false,
                                           size_weights, weight_desc, dev_dw,
                                           dv_bias.data, 1, 1, v_bias_len, ss());
-                    out[7] = std::optional<Tensor>(std::move(dq_bias));
-                    out[8] = std::optional<Tensor>(std::move(dk_bias));
-                    out[9] = std::optional<Tensor>(std::move(dv_bias));
+                } else {
+                    std::memset(dq_bias.data, 0,
+                                dq_bias.count() * sizeof(dtype));
+                    std::memset(dk_bias.data, 0,
+                                dk_bias.count() * sizeof(dtype));
+                    std::memset(dv_bias.data, 0,
+                                dv_bias.count() * sizeof(dtype));
                 }
+
                 dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_BIASES,
                                       false, size_weights, weight_desc, dev_dw,
                                       do_bias.data, 1, 1, o_bias_len, ss());
+                out[7] = std::optional<Tensor>(std::move(dq_bias));
+                out[8] = std::optional<Tensor>(std::move(dk_bias));
+                out[9] = std::optional<Tensor>(std::move(dv_bias));
                 out[10] = std::optional<Tensor>(std::move(do_bias));
             }
         }
