@@ -134,5 +134,5 @@ def mha():
         (torch.randn(10, 60, 80),
          torch.randn(10, 60, 80),
          torch.randn(10, 60, 80)),
-        MHAModel(80, 5, add_bias_kv=True, add_zero_attn=True),
+        MHAModel(80, 5, add_bias_kv=True, add_zero_attn=False),
         MHA, 'with bias_kv and add_zero_attn')

@@ -520,11 +520,9 @@ def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
         key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
         need_to_project, algorithm)
     assert (len(out) == _core.MHA_NUM_GRAD)
-    print('have out')
     if q_proj_bias is None and k_proj_bias is None and v_proj_bias is None and out_proj_bias is None:
         out = out[:7]
-    return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) if grad
-           is not None else None for grad in out]  # type: ignore
+    return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) for grad in out]  # type: ignore
 
 def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor,
                           key: torch.Tensor, value: torch.Tensor,
@@ -562,9 +560,7 @@ def mha_backward_wrap(ctx, out_grad):
         v_bias, add_zero_attn, num_heads, k_dim, v_dim, embed_dim, dropout,
         key_padding_mask, need_weights, attn_mask, average_attn_weights,
         is_causal, need_to_project, algorithm)
-    print(1)
     assert isinstance(grads, Sequence)
-    print(2)
     return (*grads, *((None,) * (27 - len(grads))))
 
 
