@@ -466,27 +466,26 @@ operate(Tensor query, Tensor key, Tensor value,
             Tensor dk_proj(std::move(k_proj.shape), k_proj.scalar_type);
             Tensor dv_proj(std::move(v_proj.shape), v_proj.scalar_type);
             Tensor do_proj(std::move(o_proj.shape), o_proj.scalar_type);
-            buffers[0] = dev_dw_to_host<dtype>(
-                handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true, size_weights,
-                weight_desc, dev_dw, dq_proj.data, num_heads, proj_q, embed_q,
-                ss());
-            buffers[1] = dev_dw_to_host<dtype>(
-                handle, attn_desc, CUDNN_MH_ATTN_K_WEIGHTS, true, size_weights,
-                weight_desc, dev_dw, dk_proj.data, num_heads, proj_k, embed_k,
-                ss());
-            buffers[2] = dev_dw_to_host<dtype>(
-                handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true, size_weights,
-                weight_desc, dev_dw, dv_proj.data, num_heads, proj_v, embed_v,
-                ss());
+            if (need_to_project_input) {
+                buffers[0] = dev_dw_to_host<dtype>(
+                    handle, attn_desc, CUDNN_MH_ATTN_Q_WEIGHTS, true,
+                    size_weights, weight_desc, dev_dw, dq_proj.data, num_heads,
+                    proj_q, embed_q, ss());
+                buffers[1] = dev_dw_to_host<dtype>(
+                    handle, attn_desc, CUDNN_MH_ATTN_K_WEIGHTS, true,
+                    size_weights, weight_desc, dev_dw, dk_proj.data, num_heads,
+                    proj_k, embed_k, ss());
+                buffers[2] = dev_dw_to_host<dtype>(
+                    handle, attn_desc, CUDNN_MH_ATTN_V_WEIGHTS, true,
+                    size_weights, weight_desc, dev_dw, dv_proj.data, num_heads,
+                    proj_v, embed_v, ss());
+                out[3] = std::optional<Tensor>(std::move(dq_proj));
+                out[4] = std::optional<Tensor>(std::move(dk_proj));
+                out[5] = std::optional<Tensor>(std::move(dv_proj));
+            }
             buffers[3] = dev_dw_to_host<dtype>(
                 handle, attn_desc, CUDNN_MH_ATTN_O_WEIGHTS, true, size_weights,
                 weight_desc, dev_dw, do_proj.data, 1, proj_o, embed_o, ss());
-
-            ss.sync(); // TODO remove
-
-            out[3] = std::optional<Tensor>(std::move(dq_proj));
-            out[4] = std::optional<Tensor>(std::move(dk_proj));
-            out[5] = std::optional<Tensor>(std::move(dv_proj));
             out[6] = std::optional<Tensor>(std::move(do_proj));
 
             if (proj_bias) {
@@ -497,23 +496,26 @@ operate(Tensor query, Tensor key, Tensor value,
                 Tensor dv_bias(std::move(v_bias_in->shape),
                                v_bias_in->scalar_type);
                 Tensor do_bias(std::move(o_bias->shape), o_bias->scalar_type);
-                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_Q_BIASES,
-                                      false, size_weights, weight_desc, dev_dw,
-                                      dq_bias.data, 1, 1, q_bias_len, ss());
-                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_K_BIASES,
-                                      false, size_weights, weight_desc, dev_dw,
-                                      dk_bias.data, 1, 1, k_bias_len, ss());
-                dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_V_BIASES,
-                                      false, size_weights, weight_desc, dev_dw,
-                                      dv_bias.data, 1, 1, v_bias_len, ss());
+                if (need_to_project_input) {
+                    dev_dw_to_host<dtype>(handle, attn_desc,
+                                          CUDNN_MH_ATTN_Q_BIASES, false,
+                                          size_weights, weight_desc, dev_dw,
+                                          dq_bias.data, 1, 1, q_bias_len, ss());
+                    dev_dw_to_host<dtype>(handle, attn_desc,
+                                          CUDNN_MH_ATTN_K_BIASES, false,
+                                          size_weights, weight_desc, dev_dw,
+                                          dk_bias.data, 1, 1, k_bias_len, ss());
+                    dev_dw_to_host<dtype>(handle, attn_desc,
+                                          CUDNN_MH_ATTN_V_BIASES, false,
+                                          size_weights, weight_desc, dev_dw,
+                                          dv_bias.data, 1, 1, v_bias_len, ss());
+                    out[7] = std::optional<Tensor>(std::move(dq_bias));
+                    out[8] = std::optional<Tensor>(std::move(dk_bias));
+                    out[9] = std::optional<Tensor>(std::move(dv_bias));
+                }
                 dev_dw_to_host<dtype>(handle, attn_desc, CUDNN_MH_ATTN_O_BIASES,
                                       false, size_weights, weight_desc, dev_dw,
                                       do_bias.data, 1, 1, o_bias_len, ss());
-                ss.sync(); // TODO remove
-
-                out[7] = std::optional<Tensor>(std::move(dq_bias));
-                out[8] = std::optional<Tensor>(std::move(dk_bias));
-                out[9] = std::optional<Tensor>(std::move(dv_bias));
                 out[10] = std::optional<Tensor>(std::move(do_bias));
             }
         }
