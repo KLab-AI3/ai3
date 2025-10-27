@@ -119,8 +119,8 @@ def mha():
         (torch.randn(50, 10, 512),
          torch.randn(50, 10, 512),
          torch.randn(50, 10, 512)),
-        MHAModel(512, batch_first=False),
-        MHA, 'basic no batch first')
+        MHAModel(512, batch_first=False, bias=False),
+        MHA, 'basic no batch first no bias')
     test_with(
         (torch.randn(10, 50, 300),
          torch.randn(10, 50, 200),
@@ -133,5 +133,5 @@ def mha():
         (torch.randn(10, 60, 80),
          torch.randn(10, 60, 80),
          torch.randn(10, 60, 80)),
-        MHAModel(80, 5, add_bias_kv=True, add_zero_attn=False),
-        MHA, 'with bias_kv')
+        MHAModel(80, 5, add_bias_kv=True, add_zero_attn=True),
+        MHA, 'with bias_kv and add_zero_attn')
