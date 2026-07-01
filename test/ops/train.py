@@ -123,6 +123,101 @@ def conv2d():
             f'Final loss for orig and swapped are within atol {final_atol}')
 
 
+def mha():
+    class MHAModel(nn.Module):
+        def __init__(self, embed_dim=64, num_heads=8):
+            super(MHAModel, self).__init__()
+            self.attn = nn.MultiheadAttention(
+                embed_dim, num_heads, batch_first=True)
+
+        def forward(self, x):
+            out, _ = self.attn(x, x, x, need_weights=False)
+            return out
+
+    embed_dim = 64
+    num_heads = 8
+    seq_len = 16
+    num_samples = 200
+    batch_size = 10
+    num_batches = num_samples // batch_size
+
+    # synthetic regression: learn a fixed linear teacher on the inputs
+    inputs = torch.randn(num_samples, seq_len, embed_dim)
+    teacher = torch.randn(embed_dim, embed_dim)
+    targets = inputs @ teacher
+
+    model = MHAModel(embed_dim, num_heads)
+    model_swapped = deepcopy(model)
+    ai3.swap_mha(model_swapped)
+
+    lr = 0.001
+    atol = 1
+    criterion = nn.MSELoss()
+    optimizer = Adam(model.parameters(), lr=lr)
+    optimizer_swapped = Adam(model_swapped.parameters(), lr=lr)
+
+    model.train()
+    model_swapped.train()
+
+    # swap_mha reorganizes the MHA parameters (in_proj_weight is split into
+    # q/k/v_proj_weight, etc.), so named_parameters() do not line up between the
+    # two models the way they do for conv2d. Both models start identical, so if
+    # the op is correct they track each other: compare outputs and losses.
+    for epoch in range(5):
+        total_loss_model = 0.0
+        total_loss_swapped = 0.0
+        for i in range(0, num_samples, batch_size):
+            batch = inputs[i:i + batch_size]
+            target = targets[i:i + batch_size]
+
+            optimizer.zero_grad()
+            optimizer_swapped.zero_grad()
+
+            outputs = model(batch)
+            outputs_swapped = model_swapped(batch)
+
+            if not torch.allclose(outputs, outputs_swapped, atol=atol):
+                print(
+                    f'Outputs differ: {outputs} vs {outputs_swapped}')
+                exit(1)
+
+            loss = criterion(outputs, target)
+            loss_swapped = criterion(outputs_swapped, target)
+
+            loss.backward()
+            loss_swapped.backward()
+
+            optimizer.step()
+            optimizer_swapped.step()
+
+            total_loss_model += loss.item()
+            total_loss_swapped += loss_swapped.item()
+
+        print(
+            f'Epoch {epoch+1} - Loss Orig: {total_loss_model / num_batches:.4f}')
+        print(
+            f'Epoch {epoch+1} - Loss Swapped: {total_loss_swapped / num_batches:.4f}')
+
+    def final_loss(m):
+        m.eval()
+        total = 0.0
+        with torch.no_grad():
+            for i in range(0, num_samples, batch_size):
+                out = m(inputs[i:i + batch_size])
+                total += criterion(out, targets[i:i + batch_size]).item()
+        return total / num_batches
+
+    model_loss = final_loss(model)
+    swapped_loss = final_loss(model_swapped)
+    final_atol = 1e-3
+    if abs(model_loss - swapped_loss) > final_atol:
+        print(
+            f'Final loss for orig {model_loss} and swapped {swapped_loss} differ')
+    else:
+        print(
+            f'Final loss for orig and swapped are within atol {final_atol}')
+
+
 def evaluate_loss(model, loader, criterion):
     model.eval()
     total_loss = 0.0

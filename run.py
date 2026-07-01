@@ -9,6 +9,9 @@ PIP = f'{sys.executable} -m pip'
 C_FORMAT = 'clang-format'
 PY_FORMAT = 'autopep8 --in-place --experimental'
 
+BUILD_DIR = '$TMPDIR/ai3-build'
+"""Directory for the C++ build"""
+
 CSRC_FILES = ' '.join([
     str(f) for f in Path('.').rglob('*')
     if f.suffix in ['.cpp', '.hpp'] and 'venv' not in f.parts])
@@ -87,6 +90,8 @@ def build(editable: bool = False, verbose: bool = False, dev: bool = False):
         cmd += ' --verbose'
     if cxx_flags:
         cmd += f' --config-settings=cmake.define.CMAKE_CXX_FLAGS=\'{cxx_flags}\''
+    if BUILD_DIR:
+        cmd += f' --config-settings=build-dir=\'{os.path.expandvars(BUILD_DIR)}\''
     run_command(cmd)
 
 

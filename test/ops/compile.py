@@ -2,7 +2,6 @@ import torch
 from torch import nn
 import ai3
 import platform
-from test import compare_tensors
 
 PASS_MES = 'ai3 and torch Models compiled with torch.compile produce same outputs '
 
@@ -116,7 +115,6 @@ def mha():
     swap_comped = compile(orig)
     swap_comped_out = swap_comped(input_data)
 
-    compare_tensors(swap_comped_out, tar)
     assert torch.allclose(
         swap_comped_out, tar, atol=1e-6)
     print(PASS_MES + 'mha')

@@ -30,7 +30,7 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     kdim = kdim or embed_dim
     vdim = vdim or embed_dim
     seq_len_k = seq_len_k or seq_len_q
-    dtype = torch.float32
+    dtype = torch.float64
     assert kdim and vdim
     if num_samples is not None:
         if batch_first:
@@ -69,7 +69,7 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     ai3.swap_mha(orig)
     ai3_output = orig(*inputs, is_causal=is_causal, attn_mask=attn_mask)
     compare_tensors(ai3_output, torch_output, test_name,
-                    print_diff=False, print_same=False, atol=1e-3)
+                    print_diff=False, print_same=False, atol=1e-6)
 
 
 def main():

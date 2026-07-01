@@ -9,7 +9,7 @@ def run_conv2d():
 
 
 def run_mha():
-    for m in [backward, opcheck, compile, backward, train]:  # TODO fix
+    for m in [backward, opcheck, compile, backward, train]:
         m.mha()
 
 

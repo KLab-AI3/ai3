@@ -91,10 +91,6 @@ dtype *host_w_to_dev(cudnnHandle_t handle, cudnnAttnDescriptor_t attn_desc,
     return buffer;
 }
 
-// TODO need to check with the need_to_project_input in order to see if some
-// gradients are needed or not, can skip over weights if not needed?
-// not sure how that would work though because we need the torch operations
-// in the forward that we don't handle to be accounted for
 template <typename dtype>
 std::array<std::optional<Tensor>, mha::NUM_GRAD>
 operate(Tensor query, Tensor key, Tensor value,
