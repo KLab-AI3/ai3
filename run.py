@@ -83,6 +83,7 @@ def gen_clangd(file_path):
 
 
 def build(editable: bool = False, verbose: bool = False, dev: bool = False):
+    assert not CONV2D_ALGOS_TO_USE
     cxx_flags = ''
     cmd = f'{PIP} install'
     if editable:
@@ -100,6 +101,7 @@ def build(editable: bool = False, verbose: bool = False, dev: bool = False):
 
 
 def uninstall():
+    assert not CONV2D_ALGOS_TO_USE
     run_command(f'{PIP} uninstall -y {DIST_NAME}')
 
 
