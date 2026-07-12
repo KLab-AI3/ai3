@@ -3,6 +3,10 @@ import os
 from pathlib import Path
 import argparse
 import sys
+import tomllib
+
+with open('pyproject.toml', 'rb') as f:
+    DIST_NAME = tomllib.load(f)['project']['name']
 
 PY = f'{sys.executable} -m'
 PIP = f'{sys.executable} -m pip'
@@ -95,6 +99,10 @@ def build(editable: bool = False, verbose: bool = False, dev: bool = False):
     run_command(cmd)
 
 
+def uninstall():
+    run_command(f'{PIP} uninstall -y {DIST_NAME}')
+
+
 def starts_with_any(cmd, starts):
     return any(cmd.startswith(s) for s in starts)
 
@@ -121,6 +129,8 @@ if __name__ == '__main__':
             build(editable=True, verbose=True)
         elif cmd == 'install.d':
             build(dev=True)
+        elif cmd == 'uninstall':
+            uninstall()
         elif cmd.startswith('example'):
             run_command(f'{PY} {cmd}')
         elif cmd == 'test':
