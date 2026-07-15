@@ -157,9 +157,10 @@ if __name__ == '__main__':
         else:
             cmd_found = False
             for start in [
-                    'test.ops', 'test.swap_conv2d', 'test.convert',
+                    'test.ops', 'test.swap_conv2d', 'test.swap_mha',
+                    'test.convert',
                     'test.serialization.pickle', 'test.serialization.deepcopy',
-                    'bench.backward_step', 'bench.swap_conv2d',
+                    'bench.backward_step', 'bench.swap_conv2d', 'bench.swap_mha',
                     'bench.convert', 'bench.compile']:
                 if cmd.startswith(start):
                     fix_cmd_run(cmd, start)

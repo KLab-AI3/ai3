@@ -4,7 +4,7 @@ from torch import nn
 import ai3
 from test import compare_tensors
 
-N = 100
+N = 50
 
 
 class MHA(nn.Module):

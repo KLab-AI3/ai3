@@ -24,13 +24,14 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
          kdim=None, vdim=None, seq_len_k=None,
          bias: bool = False, add_bias_kv=False, batch_first=False,
          add_zero_attn: bool = False, is_causal=False, use_same=False,
-         test_name: str) -> None:
+         dtype=torch.float64, atol=None, test_name: str) -> None:
     if use_same:
         assert (kdim or vdim) is None
     kdim = kdim or embed_dim
     vdim = vdim or embed_dim
     seq_len_k = seq_len_k or seq_len_q
-    dtype = torch.float64
+    if atol is None:
+        atol = 1e-6 if dtype == torch.float64 else 1e-3
     assert kdim and vdim
     if num_samples is not None:
         if batch_first:
@@ -69,11 +70,28 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     ai3.swap_mha(orig)
     ai3_output = orig(*inputs, is_causal=is_causal, attn_mask=attn_mask)
     compare_tensors(ai3_output, torch_output, test_name,
-                    print_diff=False, print_same=False, atol=1e-6)
+                    print_diff=False, print_same=False, atol=atol)
 
 
 def main():
     print('MHA')
+    test(num_samples=20,
+         seq_len_q=10,
+         embed_dim=64,
+         num_heads=4,
+         bias=True,
+         batch_first=True,
+         dtype=torch.float32,
+         test_name='float32 smoke batched batch_first')
+
+    test(num_samples=None,
+         seq_len_q=20,
+         embed_dim=64,
+         num_heads=4,
+         bias=True,
+         dtype=torch.float32,
+         test_name='float32 smoke not batched')
+
     test(num_samples=20,
          seq_len_q=10,
          embed_dim=64,
