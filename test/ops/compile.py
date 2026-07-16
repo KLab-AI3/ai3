@@ -26,11 +26,29 @@ class ConvNet(nn.Module):
         return x
 
 
+class ConvBwd(nn.Module):
+    def __init__(self):
+        super(ConvBwd, self).__init__()
+        self.conv = nn.Conv2d(3, 8, 3)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
 def compile(orig):
     if platform.system() == 'Darwin':
         return torch.compile(orig, backend='aot_eager')
     else:
         return torch.compile(orig)
+
+
+def backward_grads(run, module, inputs):
+    for t in inputs:
+        t.grad = None
+    module.zero_grad()
+    run(*inputs).sum().backward()
+    return ([t.grad.clone() for t in inputs],
+            {name: p.grad.clone() for name, p in module.named_parameters()})
 
 
 def conv2d():
@@ -45,6 +63,26 @@ def conv2d():
     assert torch.allclose(
         swap_comped_out, tar, atol=1e-6)
     print(PASS_MES + 'conv2d')
+
+    bwd = ConvBwd()
+    bwd.eval()
+    inputs = (torch.randn(2, 3, 16, 16, requires_grad=True),)
+    tar_input_grads, tar_param_grads = backward_grads(bwd, bwd, inputs)
+
+    ai3.swap_conv2d(bwd)
+    bwd_comped = compile(bwd)
+    swap_input_grads, swap_param_grads = backward_grads(
+        bwd_comped, bwd, inputs)
+
+    for name, tar_grad, swap_grad in zip(('dinput',),
+                                         tar_input_grads, swap_input_grads):
+        assert torch.allclose(tar_grad, swap_grad, atol=1e-3), \
+            f'{name} differs after compiled backward'
+    for name in tar_param_grads:
+        assert torch.allclose(
+            tar_param_grads[name], swap_param_grads[name], atol=1e-3), \
+            f'{name} differs after compiled backward'
+    print(PASS_MES + 'conv2d backward')
 
 
 class MHA(nn.Module):
@@ -104,6 +142,16 @@ class MHA(nn.Module):
         return x
 
 
+class MHASingle(nn.Module):
+    def __init__(self, embed_dim=64, num_heads=4):
+        super(MHASingle, self).__init__()
+        self.attn = nn.MultiheadAttention(
+            embed_dim, num_heads, batch_first=True)
+
+    def forward(self, q, k, v):
+        return self.attn(q, k, v, need_weights=False)[0]
+
+
 def mha():
     input_data = torch.randn(2, 10, 512)
 
@@ -118,3 +166,19 @@ def mha():
     assert torch.allclose(
         swap_comped_out, tar, atol=1e-6)
     print(PASS_MES + 'mha')
+
+    bwd = MHASingle()
+    bwd.eval()
+    inputs = tuple(torch.randn(2, 10, 64, requires_grad=True)
+                   for _ in range(3))
+    tar_input_grads, _ = backward_grads(bwd, bwd, inputs)
+
+    ai3.swap_mha(bwd)
+    bwd_comped = compile(bwd)
+    swap_input_grads, _ = backward_grads(bwd_comped, bwd, inputs)
+
+    for name, tar_grad, swap_grad in zip(('dq', 'dk', 'dv'),
+                                         tar_input_grads, swap_input_grads):
+        assert torch.allclose(tar_grad, swap_grad, atol=1e-3), \
+            f'{name} differs after compiled backward'
+    print(PASS_MES + 'mha backward')

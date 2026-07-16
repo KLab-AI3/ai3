@@ -26,7 +26,7 @@ PY_FILES = ' '.join([str(f)
 
 CONV2D_ALGOS_TO_USE = []
 """The *conv2d* algorithms to use"""
-_use_all_possible_conv = os.environ.get('USE_ALL_POSSIBLE_CONV', 'true').lower()
+_use_all_possible_conv = os.environ.get('USE_ALL_POSSIBLE_CONV', 'false').lower()
 if _use_all_possible_conv not in ('true', 'false'):
     raise ValueError(
         "USE_ALL_POSSIBLE_CONV must be 'true' or 'false', got "

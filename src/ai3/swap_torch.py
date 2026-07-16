@@ -326,7 +326,7 @@ def conv2d_abstract(
         s = (n, out_c, height, width)
     else:
         s = (out_c, height, width)
-    return torch.empty(s, dtype=input.dtype, device='cpu')
+    return torch.empty(s, dtype=input.dtype, device=input.device)
 
 
 def conv2d_backward(ctx, out_grad):
@@ -396,15 +396,15 @@ torch.library.register_autograd(
     'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
 
 
-def ptr_or_none(t: torch.Tensor) -> Optional[int]:
+def ptr_or_none(t: Optional[torch.Tensor]) -> Optional[int]:
     return None if t is None else t.data_ptr()
 
 
-def cont_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
+def cont_or_none(t: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     return None if t is None else t.contiguous()
 
 
-def clone_or_none(t: torch.Tensor) -> Optional[torch.Tensor]:
+def clone_or_none(t: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     return None if t is None else t.clone()
 
 
@@ -449,7 +449,7 @@ def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
 
 def mha_abstract(query: torch.Tensor, *args) -> torch.Tensor:
     del args
-    return torch.empty(query.shape, dtype=query.dtype, device='cpu')
+    return torch.empty_like(query)
 
 
 def mha_setup_context(ctx, inputs, output):
@@ -484,10 +484,12 @@ def mha_setup_context(ctx, inputs, output):
 def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
                  Tensor, value: torch.Tensor, q_proj: torch.Tensor,
                  k_proj: torch.Tensor, v_proj: torch.Tensor,
-                 out_proj: torch.Tensor, q_proj_bias: torch.Tensor,
-                 k_proj_bias: torch.Tensor, v_proj_bias: torch.Tensor,
-                 out_proj_bias: torch.Tensor, mem_fmt: int, k_bias: torch.
-                 Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
+                 out_proj: torch.Tensor,
+                 q_proj_bias: Optional[torch.Tensor],
+                 k_proj_bias: Optional[torch.Tensor],
+                 v_proj_bias: Optional[torch.Tensor],
+                 out_proj_bias: Optional[torch.Tensor], mem_fmt: int,
+                 k_bias: torch.Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
                  num_heads: int, k_dim: int, v_dim: int, embed_dim: int,
                  dropout: float, key_padding_mask: torch.Tensor,
                  need_weights: bool, attn_mask: torch.Tensor,
@@ -528,12 +530,19 @@ def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor,
                           key: torch.Tensor, value: torch.Tensor,
                           q_proj: torch.Tensor, k_proj: torch.Tensor,
                           v_proj: torch.Tensor, out_proj: torch.Tensor,
-                          q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
-                          v_proj_bias: torch.Tensor, out_proj_bias: torch.
-                          Tensor, *args) -> List[torch.Tensor]:
+                          q_proj_bias: Optional[torch.Tensor],
+                          k_proj_bias: Optional[torch.Tensor],
+                          v_proj_bias: Optional[torch.Tensor],
+                          out_proj_bias: Optional[torch.Tensor],
+                          *args) -> List[torch.Tensor]:
     del out_grad, args
-    return [torch.empty(grad.shape) if grad
-            is not None else None for grad in [query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]]  # type: ignore
+    grads = [query, key, value, q_proj, k_proj, v_proj, out_proj]
+    if not (q_proj_bias is None and k_proj_bias is None
+            and v_proj_bias is None and out_proj_bias is None):
+        assert (q_proj_bias is not None and k_proj_bias is not None
+                and v_proj_bias is not None and out_proj_bias is not None)
+        grads += [q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]
+    return [torch.empty_like(grad) for grad in grads]
 
 
 torch.library.custom_op(
