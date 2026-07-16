@@ -9,7 +9,7 @@ def warm_up(runner, data):
         input = (data[0][0], data[1][0], data[2][0])
         runner(*input)
     else:
-        input = data[0]
+        input = data[:1]
         runner(input)
 
 

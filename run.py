@@ -26,10 +26,16 @@ PY_FILES = ' '.join([str(f)
 
 CONV2D_ALGOS_TO_USE = []
 """The *conv2d* algorithms to use"""
-USE_ALL_POSSIBLE_CONV = True
+_use_all_possible_conv = os.environ.get('USE_ALL_POSSIBLE_CONV', 'true').lower()
+if _use_all_possible_conv not in ('true', 'false'):
+    raise ValueError(
+        "USE_ALL_POSSIBLE_CONV must be 'true' or 'false', got "
+        f'{_use_all_possible_conv!r}')
+USE_ALL_POSSIBLE_CONV = _use_all_possible_conv == 'true'
 """
 Whether to automatically generate :data:`CONV2D_ALGOS_TO_USE` to contain all
-possible algorithms
+possible algorithms. Controlled by the ``USE_ALL_POSSIBLE_CONV`` environment
+variable, which must be ``true`` or ``false`` (default ``true``)
 """
 if USE_ALL_POSSIBLE_CONV:
     assert len(CONV2D_ALGOS_TO_USE) == 0
