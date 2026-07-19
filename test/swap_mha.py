@@ -12,7 +12,7 @@ def runner(module: torch.nn.Module, input_data: torch.Tensor, name: str):
         output = module(input_data)
         compare_tensors(
             output, target,
-            f'{name} swap mha, {model_zoo.BATCH} samples', atol=1e-3)
+            f'{name} swap mha, {model_zoo.BATCH} samples')
 
 
 if __name__ == '__main__':

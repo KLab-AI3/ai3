@@ -7,6 +7,7 @@ import torchvision.datasets as datasets
 from copy import deepcopy
 import numpy as np
 import ai3
+from test import compare_tensors
 
 
 class ConvNet(nn.Module):
@@ -85,11 +86,10 @@ def conv2d():
                     model_swapped.named_parameters()):
                 assert (param[1].grad is not None)
                 assert (param_swapped[1].grad is not None)
-                if not torch.allclose(
-                        param[1].grad, param_swapped[1].grad, atol=atol):
-                    print(
-                        f'Grads differ for {param[0]}: {param[1].grad} vs {param_swapped[1].grad}')
-                    exit(1)
+                compare_tensors(
+                    param_swapped[1].grad, param[1].grad,
+                    f'conv2d grad {param[0]} epoch {epoch + 1}',
+                    atol=atol, print_pass=False, print_diff=False)
 
             optimizer.step()
             optimizer_swapped.step()
@@ -97,10 +97,10 @@ def conv2d():
             for param, param_swapped in zip(
                     model.named_parameters(),
                     model_swapped.named_parameters()):
-                if not torch.allclose(param[1], param_swapped[1], atol=atol):
-                    print(
-                        f'Weights differ for {param[0]}: {param[1]} vs {param_swapped[1]}')
-                    exit(1)
+                compare_tensors(
+                    param_swapped[1], param[1],
+                    f'conv2d weight {param[0]} epoch {epoch + 1}',
+                    atol=atol, print_pass=False, print_diff=False)
 
             total_loss_model += loss.item()
             total_loss_swapped += loss_swapped.item()
@@ -114,13 +114,9 @@ def conv2d():
         model, loader, criterion)
     swapped_loss = evaluate_loss(
         model_swapped, loader, criterion)
-    final_atol = 1e-3
-    if abs(model_loss - swapped_loss) > final_atol:
-        print(
-            f'Final loss for orig {model_loss} and swapped {swapped_loss} differ')
-    else:
-        print(
-            f'Final loss for orig and swapped are within atol {final_atol}')
+    compare_tensors(
+        torch.tensor([swapped_loss]), torch.tensor([model_loss]),
+        'conv2d final loss', atol=1e-3)
 
 
 def mha():
@@ -176,10 +172,10 @@ def mha():
             outputs = model(batch)
             outputs_swapped = model_swapped(batch)
 
-            if not torch.allclose(outputs, outputs_swapped, atol=atol):
-                print(
-                    f'Outputs differ: {outputs} vs {outputs_swapped}')
-                exit(1)
+            compare_tensors(
+                outputs_swapped, outputs,
+                f'mha output epoch {epoch + 1}',
+                atol=atol, print_pass=False, print_diff=False)
 
             loss = criterion(outputs, target)
             loss_swapped = criterion(outputs_swapped, target)
@@ -209,13 +205,9 @@ def mha():
 
     model_loss = final_loss(model)
     swapped_loss = final_loss(model_swapped)
-    final_atol = 1e-3
-    if abs(model_loss - swapped_loss) > final_atol:
-        print(
-            f'Final loss for orig {model_loss} and swapped {swapped_loss} differ')
-    else:
-        print(
-            f'Final loss for orig and swapped are within atol {final_atol}')
+    compare_tensors(
+        torch.tensor([swapped_loss]), torch.tensor([model_loss]),
+        'mha final loss', atol=1e-3)
 
 
 def evaluate_loss(model, loader, criterion):

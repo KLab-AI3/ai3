@@ -30,8 +30,6 @@ def test(*, num_samples, seq_len_q: int, embed_dim: int, num_heads: int,
     kdim = kdim or embed_dim
     vdim = vdim or embed_dim
     seq_len_k = seq_len_k or seq_len_q
-    if atol is None:
-        atol = 1e-6 if dtype == torch.float64 else 1e-3
     assert kdim and vdim
     if num_samples is not None:
         if batch_first:

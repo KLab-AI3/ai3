@@ -1,6 +1,7 @@
 import torch
 import ai3
 import torch.nn.functional as F
+from test import compare_tensors
 
 CONV = 'conv'
 MHA = 'mha'
@@ -45,28 +46,7 @@ def remap_mha_ai3(grad_ai3, torch_names):
     return g
 
 
-def report(name, torch_grad, ai3_grad, mes, atol, rtol):
-    if torch_grad is None or ai3_grad is None:
-        print(f'  missing gradient for {name} on {mes} '
-              f'(torch: {torch_grad is not None}, ai3: {ai3_grad is not None})')
-        return False
-    if torch.allclose(torch_grad, ai3_grad, atol=atol, rtol=rtol):
-        print(f'  same gradients for {name} on {mes}')
-        return True
-    print(f'Gradients for {name} on {mes} differ')
-    print('first 10 torch:', ' '.join(
-        map(str, torch_grad.flatten()[:10].tolist())))
-    print('first 10 ai3:', ' '.join(
-        map(str, ai3_grad.flatten()[:10].tolist())))
-    return False
-
-
-def test_with(input, model, op, mes, *, dtype=torch.float32,
-              atol=None, rtol=None):
-    if atol is None:
-        atol = 1e-6 if dtype == torch.float64 else 1e-3
-    if rtol is None:
-        rtol = 1e-6 if dtype == torch.float64 else 1e-3
+def test_with(input, model, op, mes, *, dtype=torch.float32):
     mes = f'{mes} ({dtype})'
 
     model = model.to(dtype)
@@ -86,20 +66,15 @@ def test_with(input, model, op, mes, *, dtype=torch.float32,
     if op == MHA:
         grad_ai3 = remap_mha_ai3(grad_ai3, set(grad_torch))
 
-    same_gradients = True
     for name in grad_torch:
-        same_gradients &= report(
-            name, grad_torch[name], grad_ai3.get(name), mes, atol, rtol)
+        compare_tensors(grad_ai3.get(name), grad_torch[name],
+                        f'grad {name} for {op} on {mes}', print_diff=False)
 
     if op == MHA:
         for label, tg, ag in zip(
                 ('dq', 'dk', 'dv'), input_grad_torch, input_grad_ai3):
-            same_gradients &= report(label, tg, ag, mes, atol, rtol)
-
-    if same_gradients:
-        print(f'Gradients are the same for {op} on {mes}')
-    else:
-        print(f'Gradients are different for {op} on {mes}')
+            compare_tensors(ag, tg, f'grad {label} for {op} on {mes}',
+                            print_diff=False)
 
 
 def conv2d():

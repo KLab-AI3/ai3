@@ -23,12 +23,29 @@ def add_fail(mes):
     FAILED_TESTS.append(f'{mes}')
 
 
+def default_tol(dtype):
+    if dtype == torch.float64:
+        return 1e-6, 1e-6
+    if dtype in (torch.float16, torch.bfloat16):
+        return 1e-2, 1e-2
+    return 1e-4, 1e-4
+
+
 def compare_tensors(
         out_tensor, tar_tensor, mes: Optional[str] = None,
-        atol: Optional[float] = 1e-4, print_pass=True, print_diff=True, print_same=False) -> None:
-    if atol is None:
-        atol = 1e-4
+        atol: Optional[float] = None, print_pass=True, print_diff=True,
+        print_same=False, rtol: Optional[float] = None) -> None:
+    if out_tensor is None or tar_tensor is None:
+        add_fail(mes)
+        print(f'Failed Test {mes}, missing tensor '
+              f'(target: {tar_tensor is not None}, output: {out_tensor is not None})')
+        return
     assert (isinstance(tar_tensor, torch.Tensor))
+    default_atol, default_rtol = default_tol(tar_tensor.dtype)
+    if atol is None:
+        atol = default_atol
+    if rtol is None:
+        rtol = default_rtol
     if isinstance(out_tensor, np.ndarray):
         out = out_tensor
     elif isinstance(out_tensor, torch.Tensor):
@@ -60,8 +77,9 @@ def compare_tensors(
             f'Failed Test `{mes}`, Tensors have different shapes, target: {tar.shape} and output {out.shape}')
         return
 
-    different_elements = np.where(np.abs(out - tar) > atol)
-    same_elements = np.where(np.abs(out - tar) <= atol) if print_same else None
+    tol = atol + rtol * np.abs(tar)
+    different_elements = np.where(np.abs(out - tar) > tol)
+    same_elements = np.where(np.abs(out - tar) <= tol) if print_same else None
 
     if len(different_elements[0]) == 0:
         if mes and print_pass:

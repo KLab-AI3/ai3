@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import ai3
 import platform
+from test import compare_tensors
 
 PASS_MES = 'ai3 and torch Models compiled with torch.compile produce same outputs '
 
@@ -60,9 +61,8 @@ def conv2d():
     swap_comped = compile(orig)
     swap_comped_out = swap_comped(input_data)
 
-    assert torch.allclose(
-        swap_comped_out, tar, atol=1e-6)
-    print(PASS_MES + 'conv2d')
+    compare_tensors(swap_comped_out, tar, PASS_MES + 'conv2d',
+                    print_diff=False)
 
     bwd = ConvBwd()
     bwd.eval()
@@ -76,13 +76,13 @@ def conv2d():
 
     for name, tar_grad, swap_grad in zip(('dinput',),
                                          tar_input_grads, swap_input_grads):
-        assert torch.allclose(tar_grad, swap_grad, atol=1e-3), \
-            f'{name} differs after compiled backward'
+        compare_tensors(swap_grad, tar_grad,
+                        f'{PASS_MES}conv2d backward {name}',
+                        print_diff=False)
     for name in tar_param_grads:
-        assert torch.allclose(
-            tar_param_grads[name], swap_param_grads[name], atol=1e-3), \
-            f'{name} differs after compiled backward'
-    print(PASS_MES + 'conv2d backward')
+        compare_tensors(swap_param_grads[name], tar_param_grads[name],
+                        f'{PASS_MES}conv2d backward {name}',
+                        print_diff=False)
 
 
 class MHA(nn.Module):
@@ -163,9 +163,8 @@ def mha():
     swap_comped = compile(orig)
     swap_comped_out = swap_comped(input_data)
 
-    assert torch.allclose(
-        swap_comped_out, tar, atol=1e-6)
-    print(PASS_MES + 'mha')
+    compare_tensors(swap_comped_out, tar, PASS_MES + 'mha',
+                    print_diff=False)
 
     bwd = MHASingle()
     bwd.eval()
@@ -179,6 +178,6 @@ def mha():
 
     for name, tar_grad, swap_grad in zip(('dq', 'dk', 'dv'),
                                          tar_input_grads, swap_input_grads):
-        assert torch.allclose(tar_grad, swap_grad, atol=1e-3), \
-            f'{name} differs after compiled backward'
-    print(PASS_MES + 'mha backward')
+        compare_tensors(swap_grad, tar_grad,
+                        f'{PASS_MES}mha backward {name}',
+                        print_diff=False)
