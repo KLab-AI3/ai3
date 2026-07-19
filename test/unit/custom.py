@@ -22,7 +22,10 @@ def test(mod: nn.Module, input_shape: list[int], name: str):
             m(torch.randn(input_shape))
     except RuntimeError as e:
         error_message = str(e).lower()
-        if "trying to use custom" in error_message and "when no implementation exists" in error_message:
+        no_impl = ("trying to use user" in error_message
+                   and "when no implementation exists" in error_message)
+        undeclared = "unknown if custom implementation supports" in error_message
+        if no_impl or undeclared:
             print(f'  correct error for nonexistant custom {name}')
         else:
             raise
@@ -41,7 +44,8 @@ def main():
     test(adaptiveavgpool2d.AdaptiveAvgPool2D(
         1), [3, 10, 100], 'adaptiveavgpool2d')
     test(maxpool2d.MaxPool2D(4, 2, 2, 1, False), [3, 100, 100], 'maxpool2d')
-    test(mha.MHA(64, 4, 64, 64, True, True, True, True), [10, 64], 'mha')
+    test(mha.MHA(64, 4, 64, 64, True, True, True, True, torch.float32),
+         [10, 64], 'mha')
 
 
 if __name__ == '__main__':
