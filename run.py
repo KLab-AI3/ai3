@@ -5,7 +5,9 @@ import argparse
 import sys
 import tomllib
 
-with open('pyproject.toml', 'rb') as f:
+_PYPROJECT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'pyproject.toml')
+with open(_PYPROJECT, 'rb') as f:
     DIST_NAME = tomllib.load(f)['project']['name']
 
 PY = f'{sys.executable} -m'

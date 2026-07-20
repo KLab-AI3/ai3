@@ -6,6 +6,8 @@
 .. |custom| replace:: *custom*
 .. _custom_cmake: https://github.com/KLab-ai3/ai3/tree/main/cmake/custom.cmake
 .. |custom_cmake| replace:: *custom.cmake*
+.. _model_zoo: https://github.com/KLab-ai3/ai3/tree/main/model_zoo/models.py
+.. |model_zoo| replace:: *model_zoo*
 .. _doc: https://klab-ai3.github.io/ai3
 .. |doc| replace:: **Documentation**
 .. |name| replace:: *ai3*
@@ -240,6 +242,30 @@ Linear
      - |n|
    * - *cublas*
      - |y|
+   * - *mps*
+     - |n|
+   * - *metal*
+     - |n|
+
+
+Multihead Attention
+~~~~~~~~~~~~~~~~~~~~
+.. list-table::
+   :widths: auto
+   :header-rows: 0
+   :stub-columns: 1
+   :align: left
+
+   * - Algorithm
+     - *standard*
+   * - *none*
+     - |y|
+   * - *sycl*
+     - |n|
+   * - *cudnn*
+     - |y|
+   * - *cublas*
+     - |n|
    * - *mps*
      - |n|
    * - *metal*
