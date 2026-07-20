@@ -5,12 +5,12 @@ mv docs/_build/html/ pages/latest/
 
 for tag in $(git tag); do
     echo "Processing tag: $tag"
-    git checkout "$tag"
+    git checkout -f "$tag"
+    git checkout main -- pyproject.toml docs/conf.py
     python -m pip install .
-    git checkout main -- docs/conf.py
     python run.py docs
     mv docs/_build/html/ "pages/$tag/"
     echo "Finished processing tag: $tag"
 done
 
-git checkout main
+git checkout -f main
