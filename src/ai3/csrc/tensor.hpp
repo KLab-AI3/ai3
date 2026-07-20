@@ -3,7 +3,6 @@
 #pragma once
 
 #include "utils.hpp"
-#include <algorithm>
 #include <cstring>
 #include <optional>
 #include <pybind11/pybind11.h>
@@ -99,12 +98,10 @@ class Tensor {
         if (data_address.has_value()) {
             if (own) {
                 return Tensor(*data_address, s, scalar_type);
-            } else {
-                return form_tensor(*data_address, s, scalar_type);
             }
-        } else {
-            return std::nullopt;
+            return form_tensor(*data_address, s, scalar_type);
         }
+        return std::nullopt;
     }
 
     /**
@@ -251,6 +248,14 @@ inline void ensure_same_type(const Tensor &a, const Tensor &b) {
     errs::bail_if(a.scalar_type != b.scalar_type,
                   "tensors have different data types");
 }
+
+inline void ensure_same_type(const Tensor &a, const Tensor &b,
+                             const Tensor &c) {
+    errs::bail_if(a.scalar_type != b.scalar_type ||
+                      a.scalar_type != c.scalar_type,
+                  "tensors have different data types");
+}
+
 inline void ensure_same_type(const Tensor &a, const Tensor &b,
                              const std::optional<const Tensor> &c) {
     ensure_same_type(a, b);

@@ -2,7 +2,6 @@
 
 #include <ai3.hpp>
 #include <algos.hpp>
-#include <optional>
 
 template <typename dtype> Tensor relu::direct(Tensor input) {
     int total_elements = input.count();

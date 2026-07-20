@@ -4,7 +4,8 @@ from . import _core, layers, errors, utils
 from typing import Mapping, Optional, List, Sequence, Union, DefaultDict, Tuple, Type
 from collections import defaultdict
 import torch
-from torch import nn, fx, ops, relu  # type: ignore
+from torch import nn, fx, ops  # type: ignore
+import torch.nn.functional as F
 from torch.nn import grad
 from torch.fx import passes
 from packaging import version
@@ -12,14 +13,13 @@ from packaging import version
 MIN_TORCH_VERSION = '2.4'
 
 errors.bail_if(version.parse(torch.__version__) < version.parse(
-    MIN_TORCH_VERSION), 'requires torch >= 2.4')
+    MIN_TORCH_VERSION), f'requires torch >= {MIN_TORCH_VERSION}')
 
 
 class Conv2D(nn.Module):
     def __init__(self, orig: nn.Conv2d, algorithm: str):
         super(Conv2D, self).__init__()
         self.algorithm = algorithm
-
         self.stride = utils.make_2d(orig.stride)
         self.dilation = utils.make_2d(
             orig.dilation)
@@ -56,6 +56,174 @@ class Conv2D(nn.Module):
             self.groups, self.algorithm)
 
 
+class MultiheadAttention(nn.Module):
+    def __init__(self, orig: nn.MultiheadAttention, algorithm: str):
+        super(MultiheadAttention, self).__init__()
+        self.algorithm = algorithm
+        self.batch_first = orig.batch_first
+        self.num_heads = orig.num_heads
+        self.embed_dim = orig.embed_dim
+        self.head_dim = orig.head_dim
+        self.kdim = orig.kdim
+        self.vdim = orig.vdim
+        self.dropout = orig.dropout
+
+        self.add_zero_attn = orig.add_zero_attn
+
+        if self.embed_dim == self.kdim and self.embed_dim == self.vdim:
+            self.q_proj_weight = nn.Parameter(
+                orig.in_proj_weight[: self.embed_dim, :])
+            self.k_proj_weight = nn.Parameter(
+                orig.in_proj_weight[self.embed_dim:2*self.embed_dim, :])
+            self.v_proj_weight = nn.Parameter(
+                orig.in_proj_weight[2*self.embed_dim:, :])
+        else:
+            self.q_proj_weight = orig.q_proj_weight
+            self.k_proj_weight = orig.k_proj_weight
+            self.v_proj_weight = orig.v_proj_weight
+
+        if orig.in_proj_bias is not None:
+            self.bias_q_in = nn.Parameter(orig.in_proj_bias[:self.embed_dim])
+            self.bias_k_in = nn.Parameter(
+                orig.in_proj_bias[self.embed_dim:2*self.embed_dim])
+            self.bias_v_in = nn.Parameter(orig.in_proj_bias[2*self.embed_dim:])
+        else:
+            self.bias_q_in = self.bias_k_in = self.bias_v_in = None
+        self.bias_q, self.bias_k, self.bias_v = None, orig.bias_k, orig.bias_v
+
+        self.out_proj_weight = orig.out_proj.weight
+        self.out_proj_bias = orig.out_proj.bias
+
+    def handle_inputs(self, query: torch.Tensor, key: torch.Tensor, value:
+                      torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
+                                             torch.Tensor, _core.MHAMemFormat]:
+        batch_dim = 0 if self.batch_first else 1
+        len_dim = int(not batch_dim)
+        batch_size = query.shape[batch_dim]
+        tgt_len = query.shape[len_dim]
+
+        q = F.linear(query, self.q_proj_weight, self.bias_q_in)
+        k = F.linear(key, self.k_proj_weight, self.bias_k_in)
+        v = F.linear(value, self.v_proj_weight, self.bias_v_in)
+
+        if self.bias_k is not None and self.bias_v is not None:
+            repeat = (
+                batch_size, 1, 1) if self.batch_first else (
+                1, batch_size, 1)
+            k = torch.cat([k, self.bias_k.repeat(repeat)], dim=len_dim)
+            v = torch.cat([v, self.bias_v.repeat(repeat)], dim=len_dim)
+
+        if self.add_zero_attn:
+            zero_attn_shape = (
+                batch_size, 1, k.shape[2]) if self.batch_first else (
+                1, batch_size, k.shape[2])
+            k = torch.cat([k, torch.zeros(zero_attn_shape)], dim=len_dim)
+            v = torch.cat([v, torch.zeros(zero_attn_shape)], dim=len_dim)
+
+        src_len = k.shape[len_dim]
+
+        len_dim = 1 if self.batch_first else 0
+        first_two_q = (
+            batch_size, tgt_len) if self.batch_first else (
+            tgt_len, batch_size)
+        first_two_kv = (
+            batch_size, src_len) if self.batch_first else (
+            src_len, batch_size)
+        mem_fmt = _core.MHAMemFormat.NSHD if self.batch_first else _core.MHAMemFormat.SNHD
+        q = q.view(*first_two_q, self.num_heads,
+                   self.head_dim)
+        k = k.view(*first_two_kv, self.num_heads,
+                   self.head_dim)
+        v = v.view(*first_two_kv, self.num_heads,
+                   self.head_dim)
+        return q, k, v, _core.MHAMemFormat(mem_fmt)
+
+    def handle_outputs(
+            self, attn_output: torch.Tensor, batch_size: int,
+            tgt_len: int, embed_dim: int) -> torch.Tensor:
+        attn_output = attn_output.transpose(
+            1, 2).view(
+            batch_size * tgt_len, embed_dim)
+        attn_output = F.linear(
+            attn_output, self.out_proj_weight, self.out_proj_bias)
+        attn_output = attn_output.view(
+            batch_size, tgt_len, embed_dim)
+        if not self.batch_first:
+            attn_output = attn_output.transpose(0, 1)
+        return attn_output
+
+    def forward(self, query, key, value, key_padding_mask=None,
+                need_weights=True, attn_mask=None, average_attn_weights=True,
+                is_causal=False):
+        batched = query.dim() == 3
+        if not batched:
+            dim = 0 if self.batch_first else 1
+            query = query.unsqueeze(dim)
+            key = key.unsqueeze(dim)
+            value = value.unsqueeze(dim)
+
+        mem_fmt = _core.MHAMemFormat.NSE if self.batch_first else _core.MHAMemFormat.SNE
+        assert callable(ops.ai3.mha)
+        if self.algorithm == _core.CUSTOM_OPT_STR:
+            if _core.CUSTOM_MHA_HANDLES_INPUTS:
+                attn_output = ops.ai3.mha(
+                    query, key, value, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
+                    self.bias_k_in, self.bias_v_in, self.out_proj_bias,
+                    mem_fmt, self.bias_k, self.bias_v, self.add_zero_attn,
+                    self.num_heads, self.kdim, self.vdim, self.embed_dim, self.
+                    dropout, key_padding_mask, need_weights, attn_mask,
+                    average_attn_weights, is_causal, True, self.algorithm)
+            else:
+                q, k, v, mem_fmt = self.handle_inputs(query, key, value)
+                attn_output = ops.ai3.mha(
+                    q, k, v, self.q_proj_weight, self.k_proj_weight,
+                    self.v_proj_weight, self.out_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                    bias_v_in, self.out_proj_bias, mem_fmt, self.bias_k, self.bias_v,
+                    self.add_zero_attn, self.num_heads,
+                    self.kdim, self.vdim, self.embed_dim,
+                    self.dropout,
+                    key_padding_mask, need_weights, attn_mask,
+                    average_attn_weights, is_causal, False, self.algorithm)
+                if not _core.CUSTOM_MHA_PROJECTS_OUTPUT:
+                    batch_size = query.shape[0 if self.batch_first else 1]
+                    tgt_len = query.shape[1 if self.batch_first else 0]
+                    embed_dim = query.shape[2]
+                    assert isinstance(attn_output, torch.Tensor)
+                    attn_output = self.handle_outputs(
+                        attn_output, batch_size, tgt_len, embed_dim)
+        elif (self.bias_k is None and self.bias_v is None and not
+              self.add_zero_attn and not is_causal and attn_mask is None and
+              key_padding_mask is None and not need_weights):
+            attn_output = ops.ai3.mha(
+                query, key, value, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.out_proj_weight, self.bias_q_in,
+                self.bias_k_in, self.bias_v_in, self.out_proj_bias, mem_fmt,
+                self.bias_k, self.bias_v, self.add_zero_attn, self.num_heads,
+                self.kdim, self.vdim, self.embed_dim, self.dropout,
+                key_padding_mask, need_weights, attn_mask,
+                average_attn_weights, is_causal, True, self.algorithm)
+        else:
+            q, k, v, mem_fmt = self.handle_inputs(query, key, value)
+            attn_output = ops.ai3.mha(
+                q, k, v, self.q_proj_weight, self.k_proj_weight,
+                self.v_proj_weight, self.out_proj_weight, self.bias_q_in, self.bias_k_in, self.
+                bias_v_in, self.out_proj_bias, mem_fmt, self.bias_k, self.bias_v,
+                self.add_zero_attn, self.num_heads,
+                self.kdim, self.vdim, self.embed_dim,
+                self.dropout,
+                key_padding_mask, need_weights, attn_mask,
+                average_attn_weights, is_causal, False, self.algorithm)
+        assert isinstance(attn_output, torch.Tensor)
+        if not batched:
+            if self.batch_first:
+                attn_output = attn_output.squeeze(0)
+            else:
+                attn_output = attn_output.squeeze(1)
+
+        return attn_output, None
+
+
 op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'conv2d': [nn.Conv2d, Conv2D],
     'linear': nn.Linear,
@@ -63,7 +231,8 @@ op_str_to_type: Mapping[str, Union[Type, List[Type]]] = {
     'avgpool2d': nn.AvgPool2d,
     'adaptiveavgpool2d': nn.AdaptiveAvgPool2d,
     'relu': nn.ReLU,
-    'flatten': nn.Flatten
+    'flatten': nn.Flatten,
+    'mha': [nn.MultiheadAttention, MultiheadAttention]
 }
 
 
@@ -73,8 +242,7 @@ def str_to_op_type(op_type_str: str) -> Type:
         if isinstance(op_type, list):
             return op_type[0]
         return op_type
-    else:
-        errors.unsupported_mod(op_type_str)
+    errors.unsupported_mod(op_type_str)
 
 
 def op_type_to_str(op_type: Type) -> str:
@@ -124,10 +292,12 @@ def conv2d(input: torch.Tensor,
             bias is not None and bias.requires_grad):
         requires_grad = True
     out = _core.conv2d(
-        input.data_ptr(), input.shape, utils.get_scalar_type(input.dtype),
-        weight.data_ptr(), weight.shape, bias_ptr, padding_h, padding_w,
-        stride_h, stride_w, dilation_h, dilation_w, padding_mode, groups,
-        algorithm)
+        input.data_ptr(),
+        input.shape, utils.get_scalar_type(input.dtype),
+        weight.data_ptr(),
+        weight.shape, bias_ptr, padding_h, padding_w, stride_h, stride_w,
+        dilation_h, dilation_w, _core.PaddingMode(padding_mode),
+        groups, algorithm)
     buffer = torch.frombuffer(
         out, dtype=input.dtype, requires_grad=requires_grad).view(
         out.shape)
@@ -155,13 +325,12 @@ def conv2d_abstract(
         s = (n, out_c, height, width)
     else:
         s = (out_c, height, width)
-    return torch.empty(s, dtype=input.dtype, device='cpu')
+    return torch.empty(s, dtype=input.dtype, device=input.device)
 
 
 def conv2d_backward(ctx, out_grad):
     input, weight = ctx.saved_tensors
-    padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, padding_mode, groups = ctx.hparams
-    del padding_mode
+    padding_h, padding_w, stride_h, stride_w, dilation_h, dilation_w, _, groups = ctx.hparams
 
     grad_input = grad_weight = grad_bias = None
 
@@ -202,7 +371,7 @@ def conv2d_backward(ctx, out_grad):
     return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
 
 
-def setup_context(ctx, inputs, output):
+def conv2d_setup_context(ctx, inputs, output):
     (input, weight, bias, padding_h, padding_w, stride_h, stride_w,
      dilation_h, dilation_w, padding_mode, groups, algorithm) = inputs
     del output, algorithm, bias
@@ -223,7 +392,192 @@ torch.library.custom_op(
 torch.library.register_fake(
     'ai3::conv2d', conv2d_abstract)
 torch.library.register_autograd(
-    'ai3::conv2d', conv2d_backward, setup_context=setup_context)
+    'ai3::conv2d', conv2d_backward, setup_context=conv2d_setup_context)
+
+
+def ptr_or_none(t: Optional[torch.Tensor]) -> Optional[int]:
+    return None if t is None else t.data_ptr()
+
+
+def cont_or_none(t: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    return None if t is None else t.contiguous()
+
+
+def clone_or_none(t: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    return None if t is None else t.clone()
+
+
+def mha(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_proj:
+        torch.Tensor, k_proj: torch.Tensor, v_proj: torch.Tensor, out_proj:
+        torch.Tensor, q_proj_bias: torch.Tensor, k_proj_bias: torch.Tensor,
+        v_proj_bias: torch.Tensor, out_proj_bias: torch.Tensor, mem_fmt: int,
+        k_bias: torch.Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
+        num_heads: int, k_dim: int, v_dim: int, embed_dim: int, dropout: float,
+        key_padding_mask: torch.Tensor, need_weights: bool, attn_mask:
+        torch.Tensor, average_attn_weights: bool, is_causal: bool,
+        need_to_project: bool, algorithm: str) -> torch.Tensor:
+    q_ptr, k_ptr, v_ptr = query.data_ptr(), key.data_ptr(), value.data_ptr()
+    q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
+        q_proj.data_ptr(),
+        k_proj.data_ptr(),
+        v_proj.data_ptr(),
+        out_proj.data_ptr())
+    q_bias_proj_ptr = ptr_or_none(q_proj_bias)
+    k_bias_proj_ptr = ptr_or_none(k_proj_bias)
+    v_bias_proj_ptr = ptr_or_none(v_proj_bias)
+    out_bias_proj_ptr = ptr_or_none(out_proj_bias)
+    k_bias_ptr = ptr_or_none(k_bias)
+    v_bias_ptr = ptr_or_none(v_bias)
+    attn_mask_ptr = ptr_or_none(attn_mask)
+    key_padding_mask_ptr = ptr_or_none(key_padding_mask)
+
+    out = _core.mha(
+        q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+        _core.MHAMemFormat(mem_fmt),
+        query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
+        v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
+        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
+        num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
+        key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
+        need_to_project, algorithm)
+    buffer = torch.frombuffer(
+        out, dtype=query.dtype).view(
+        out.shape)
+    return buffer
+
+
+def mha_abstract(query: torch.Tensor, *args) -> torch.Tensor:
+    del args
+    return torch.empty_like(query)
+
+
+def mha_setup_context(ctx, inputs, output):
+    (query, key, value, q_proj, k_proj, v_proj, out_proj, q_proj_bias,
+     k_proj_bias, v_proj_bias, out_proj_bias, mem_fmt, k_bias, v_bias,
+     add_zero_attn, num_heads, k_dim, v_dim, embed_dim, dropout,
+     key_padding_mask, need_weights, attn_mask, average_attn_weights,
+     is_causal, need_to_project, algorithm) = inputs
+    del output
+    if any(ctx.needs_input_grad):
+        ctx.save_for_backward(
+            query.clone(),
+            key.clone(),
+            value.clone(),
+            q_proj.clone(),
+            k_proj.clone(),
+            v_proj.clone(),
+            out_proj.clone(),
+            clone_or_none(q_proj_bias),
+            clone_or_none(k_proj_bias),
+            clone_or_none(v_proj_bias),
+            clone_or_none(out_proj_bias),
+            clone_or_none(k_bias),
+            clone_or_none(v_bias))
+        assert not hasattr(ctx, 'hparams')
+        ctx.hparams = (mem_fmt, add_zero_attn, num_heads, k_dim, v_dim,
+                       embed_dim, dropout, key_padding_mask, need_weights,
+                       attn_mask, average_attn_weights, is_causal,
+                       need_to_project, algorithm)
+
+
+def mha_backward(out_grad: torch.Tensor, query: torch.Tensor, key: torch.
+                 Tensor, value: torch.Tensor, q_proj: torch.Tensor,
+                 k_proj: torch.Tensor, v_proj: torch.Tensor,
+                 out_proj: torch.Tensor,
+                 q_proj_bias: Optional[torch.Tensor],
+                 k_proj_bias: Optional[torch.Tensor],
+                 v_proj_bias: Optional[torch.Tensor],
+                 out_proj_bias: Optional[torch.Tensor], mem_fmt: int,
+                 k_bias: torch.Tensor, v_bias: torch.Tensor, add_zero_attn: bool,
+                 num_heads: int, k_dim: int, v_dim: int, embed_dim: int,
+                 dropout: float, key_padding_mask: torch.Tensor,
+                 need_weights: bool, attn_mask: torch.Tensor,
+                 average_attn_weights: bool, is_causal: bool,
+                 need_to_project: bool, algorithm: str) -> List[torch.Tensor]:
+    out_grad = out_grad.contiguous()
+    q_ptr, k_ptr, v_ptr, do_ptr = query.data_ptr(
+    ), key.data_ptr(), value.data_ptr(), out_grad.data_ptr()
+    q_proj_ptr, k_proj_ptr, v_proj_ptr, out_proj_ptr = (
+        q_proj.data_ptr(),
+        k_proj.data_ptr(),
+        v_proj.data_ptr(),
+        out_proj.data_ptr())
+    q_bias_proj_ptr = ptr_or_none(q_proj_bias)
+    k_bias_proj_ptr = ptr_or_none(k_proj_bias)
+    v_bias_proj_ptr = ptr_or_none(v_proj_bias)
+    out_bias_proj_ptr = ptr_or_none(out_proj_bias)
+    k_bias_ptr = ptr_or_none(k_bias)
+    v_bias_ptr = ptr_or_none(v_bias)
+    attn_mask_ptr = ptr_or_none(attn_mask)
+    key_padding_mask_ptr = ptr_or_none(key_padding_mask)
+
+    out = _core.mha_backward(
+        do_ptr, q_ptr, k_ptr, v_ptr, utils.get_scalar_type(query.dtype),
+        _core.MHAMemFormat(mem_fmt),
+        query.shape, key.shape, value.shape, q_proj_ptr, k_proj_ptr,
+        v_proj_ptr, q_bias_proj_ptr, k_bias_proj_ptr, v_bias_proj_ptr,
+        k_bias_ptr, v_bias_ptr, out_proj_ptr, out_bias_proj_ptr, add_zero_attn,
+        num_heads, k_dim, v_dim, embed_dim, dropout, attn_mask_ptr,
+        key_padding_mask_ptr, need_weights, average_attn_weights, is_causal,
+        need_to_project, algorithm)
+    assert (len(out) == _core.MHA_NUM_GRAD)
+    if q_proj_bias is None and k_proj_bias is None and v_proj_bias is None and out_proj_bias is None:
+        out = out[:7]
+    return [torch.frombuffer(grad, dtype=query.dtype).view(grad.shape) for grad in out]  # type: ignore
+
+def mha_backward_abstract(out_grad: torch.Tensor, query: torch.Tensor,
+                          key: torch.Tensor, value: torch.Tensor,
+                          q_proj: torch.Tensor, k_proj: torch.Tensor,
+                          v_proj: torch.Tensor, out_proj: torch.Tensor,
+                          q_proj_bias: Optional[torch.Tensor],
+                          k_proj_bias: Optional[torch.Tensor],
+                          v_proj_bias: Optional[torch.Tensor],
+                          out_proj_bias: Optional[torch.Tensor],
+                          *args) -> List[torch.Tensor]:
+    del out_grad, args
+    grads = [query, key, value, q_proj, k_proj, v_proj, out_proj]
+    if not (q_proj_bias is None and k_proj_bias is None
+            and v_proj_bias is None and out_proj_bias is None):
+        assert (q_proj_bias is not None and k_proj_bias is not None
+                and v_proj_bias is not None and out_proj_bias is not None)
+        grads += [q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias]
+    return [torch.empty_like(grad) for grad in grads]
+
+
+torch.library.custom_op(
+    'ai3::mha_backward', mha_backward, mutates_args=())
+torch.library.register_fake(
+    'ai3::mha_backward', mha_backward_abstract)
+
+
+def mha_backward_wrap(ctx, out_grad):
+    (query, key, value,
+     q_proj, k_proj, v_proj,
+     out_proj, q_proj_bias,
+     k_proj_bias, v_proj_bias,
+     out_proj_bias, k_bias,
+     v_bias) = ctx.saved_tensors
+    (mem_fmt, add_zero_attn, num_heads, k_dim, v_dim,
+     embed_dim, dropout, key_padding_mask, need_weights,
+     attn_mask, average_attn_weights, is_causal,
+     need_to_project, algorithm) = ctx.hparams
+    assert (callable(ops.ai3.mha_backward))
+    grads = ops.ai3.mha_backward(
+        out_grad, query, key, value, q_proj, k_proj, v_proj, out_proj,
+        q_proj_bias, k_proj_bias, v_proj_bias, out_proj_bias, mem_fmt, k_bias,
+        v_bias, add_zero_attn, num_heads, k_dim, v_dim, embed_dim, dropout,
+        key_padding_mask, need_weights, attn_mask, average_attn_weights,
+        is_causal, need_to_project, algorithm)
+    assert isinstance(grads, Sequence)
+    return (*grads, *((None,) * (27 - len(grads))))
+
+
+torch.library.custom_op(
+    'ai3::mha', mha, mutates_args=())
+torch.library.register_fake(
+    'ai3::mha', mha_abstract)
+torch.library.register_autograd(
+    'ai3::mha', mha_backward_wrap, setup_context=mha_setup_context)
 
 
 def get_algo_inc_counter(orig: Union[nn.Module, str],
@@ -315,7 +669,7 @@ def convert_layers(complete_module: nn.Module, dtype,
                     layer_counters, node_input_shape, swapping_backend=True)
                 layer = layers.ReLU(algo)
             else:
-                errors.unsupported_mod(node.target)
+                errors.cannot_convert(node.target)
         elif node.op == 'call_module':
             mod = getmodule(
                 complete_module, node.target)
@@ -336,7 +690,7 @@ def convert_layers(complete_module: nn.Module, dtype,
 
 class Tracer(fx.Tracer):
     def is_leaf_module(self, m, module_qualified_name):
-        if isinstance(m, Conv2D):
+        if isinstance(m, (Conv2D, MultiheadAttention)):
             return True
         return super().is_leaf_module(m, module_qualified_name)
 
@@ -348,6 +702,8 @@ def default_dtype():
 def swapped_type(op_type) -> Optional[Type]:
     if op_type == nn.Conv2d:
         return Conv2D
+    if op_type == nn.MultiheadAttention:
+        return MultiheadAttention
     return None
 
 
@@ -411,4 +767,4 @@ def swap_layer(module: Union[nn.Module, layers.Layer],
         return layers.ReLU(algo)
     elif isinstance(module, nn.Flatten):
         return layers.Flatten(module.start_dim, module.end_dim, algo)
-    errors.unsupported_mod(module)
+    errors.cannot_convert(module)

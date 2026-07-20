@@ -4,14 +4,6 @@
 
 #include <ai3.hpp>
 
-#include "../custom/adaptiveavgpool2d.hpp"
-#include "../custom/avgpool2d.hpp"
-#include "../custom/conv2d.hpp"
-#include "../custom/flatten.hpp"
-#include "../custom/linear.hpp"
-#include "../custom/maxpool2d.hpp"
-#include "../custom/relu.hpp"
-
 #define CONV2D_PARAMS                                                          \
     Tensor, const Tensor &, const std::optional<const Tensor> &, const uint,   \
         const uint, const uint, const uint, const uint, const uint,            \
@@ -65,11 +57,46 @@ namespace relu {
 template <typename dtype> Tensor direct(RELU_PARAMS);
 }
 
-#define FLATTEN_PARAMS Tensor input, const uint, int
+#define FLATTEN_PARAMS Tensor, const uint, int
 
 namespace flatten {
 template <typename dtype> Tensor direct(FLATTEN_PARAMS);
 }
+
+#define MHA_PARAMS                                                             \
+    Tensor, Tensor, Tensor, const mha::MemFormat, const Tensor &,              \
+        const Tensor &, const Tensor &, const std::optional<const Tensor> &,   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &,                                   \
+        const std::optional<const Tensor> &, const Tensor &,                   \
+        const std::optional<const Tensor> &, const bool, const uint,           \
+        const float, const std::optional<const Tensor> &,                      \
+        const std::optional<const Tensor> &, const bool, const bool,           \
+        const bool, const bool
+
+namespace mha {
+/**
+ * Possible memory formats of inputs.
+ */
+enum class MemFormat { NSE, SNE, NSHD, SNHD };
+
+/**
+ * Number of gradients to return in backward.
+ *
+ * Order: \f$\{\nabla q, \nabla k, \nabla v, \nabla q_{proj}, \nabla k_{proj},
+ * \nabla v_{proj}, \nabla o_{proj},\nabla q_{bias}, \nabla k_{bias}, \nabla
+ * v_{bias}, \nabla o_{bias}\}\f$
+ */
+const uint NUM_GRAD = 11;
+
+/// \cond
+template <typename dtype> Tensor standard(MHA_PARAMS);
+template <typename dtype>
+std::array<std::optional<Tensor>, mha::NUM_GRAD>
+standard_backward(const intptr_t, MHA_PARAMS);
+/// \endcond
+} // namespace mha
 
 #if defined USE_CUBLAS
 const bool USING_CUBLAS = true;
@@ -93,4 +120,10 @@ const bool USING_MPS_METAL = false;
 const bool USING_SYCL = true;
 #else
 const bool USING_SYCL = false;
+#endif
+
+#if defined DEBUG_MODE
+const bool DEBUG_BUILD = true;
+#else
+const bool DEBUG_BUILD = false;
 #endif

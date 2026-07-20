@@ -1,5 +1,6 @@
 import torchvision.models as tvm
 from example.manual_conv2d import ConvNet
+from example.manual_mha import AttentionNet
 
 
 def alexnet():
@@ -76,3 +77,7 @@ def vgg16():
 
 def visiontransformer():
     return tvm.vit_b_16(), (3, 224, 224), 'vision transformer'
+
+
+def manual_mha():
+    return AttentionNet(), (16, 64), 'manual mha'

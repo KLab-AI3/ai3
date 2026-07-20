@@ -5,7 +5,7 @@
 /**
  * @DEFAULT_BOOL{Linear}
  */
-const bool DEFAULT_LINEAR = false;
+const bool CUSTOM_DEFAULT_LINEAR = false;
 
 /**
  * @CUSTOM_OP{Linear,linear}

@@ -3,24 +3,41 @@ import os
 from pathlib import Path
 import argparse
 import sys
+import tomllib
+
+_PYPROJECT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'pyproject.toml')
+with open(_PYPROJECT, 'rb') as f:
+    DIST_NAME = tomllib.load(f)['project']['name']
 
 PY = f'{sys.executable} -m'
 PIP = f'{sys.executable} -m pip'
 C_FORMAT = 'clang-format'
 PY_FORMAT = 'autopep8 --in-place --experimental'
 
+BUILD_DIR = '$TMPDIR/ai3-build'
+"""Directory for the C++ build"""
+
 CSRC_FILES = ' '.join([
     str(f) for f in Path('.').rglob('*')
     if f.suffix in ['.cpp', '.hpp'] and 'venv' not in f.parts])
 PY_FILES = ' '.join([str(f)
-                    for f in Path('.').rglob('*.py') if 'venv' not in f.parts])
+                    for f in Path('.').rglob('*')
+                    if f.suffix in {'.py', '.pyi'} and 'venv' not in f.parts])
+
 
 CONV2D_ALGOS_TO_USE = []
 """The *conv2d* algorithms to use"""
-USE_ALL_POSSIBLE_CONV = True
+_use_all_possible_conv = os.environ.get('USE_ALL_POSSIBLE_CONV', 'false').lower()
+if _use_all_possible_conv not in ('true', 'false'):
+    raise ValueError(
+        "USE_ALL_POSSIBLE_CONV must be 'true' or 'false', got "
+        f'{_use_all_possible_conv!r}')
+USE_ALL_POSSIBLE_CONV = _use_all_possible_conv == 'true'
 """
 Whether to automatically generate :data:`CONV2D_ALGOS_TO_USE` to contain all
-possible algorithms
+possible algorithms. Controlled by the ``USE_ALL_POSSIBLE_CONV`` environment
+variable, which must be ``true`` or ``false`` (default ``true``)
 """
 if USE_ALL_POSSIBLE_CONV:
     assert len(CONV2D_ALGOS_TO_USE) == 0
@@ -31,9 +48,8 @@ if USE_ALL_POSSIBLE_CONV:
             CONV2D_ALGOS_TO_USE.append('mps')
             CONV2D_ALGOS_TO_USE.append('metal')
         if ai3.using_cudnn():
-            CONV2D_ALGOS_TO_USE.extend(['gemm',
-                                        'implicit gemm', 'implicit precomp gemm',
-                                        'guess'])
+            CONV2D_ALGOS_TO_USE.extend(
+                ['gemm', 'implicit gemm', 'implicit precomp gemm', 'guess'])
     except ImportError:
         pass
 
@@ -75,6 +91,7 @@ def gen_clangd(file_path):
 
 
 def build(editable: bool = False, verbose: bool = False, dev: bool = False):
+    assert not CONV2D_ALGOS_TO_USE
     cxx_flags = ''
     cmd = f'{PIP} install'
     if editable:
@@ -86,7 +103,14 @@ def build(editable: bool = False, verbose: bool = False, dev: bool = False):
         cmd += ' --verbose'
     if cxx_flags:
         cmd += f' --config-settings=cmake.define.CMAKE_CXX_FLAGS=\'{cxx_flags}\''
+    if BUILD_DIR:
+        cmd += f' --config-settings=build-dir=\'{os.path.expandvars(BUILD_DIR)}\''
     run_command(cmd)
+
+
+def uninstall():
+    assert not CONV2D_ALGOS_TO_USE
+    run_command(f'{PIP} uninstall -y {DIST_NAME}')
 
 
 def starts_with_any(cmd, starts):
@@ -115,6 +139,8 @@ if __name__ == '__main__':
             build(editable=True, verbose=True)
         elif cmd == 'install.d':
             build(dev=True)
+        elif cmd == 'uninstall':
+            uninstall()
         elif cmd.startswith('example'):
             run_command(f'{PY} {cmd}')
         elif cmd == 'test':
@@ -139,9 +165,10 @@ if __name__ == '__main__':
         else:
             cmd_found = False
             for start in [
-                    'test.ops', 'test.swap_conv2d', 'test.convert',
+                    'test.ops', 'test.swap_conv2d', 'test.swap_mha',
+                    'test.convert',
                     'test.serialization.pickle', 'test.serialization.deepcopy',
-                    'bench.backward_step', 'bench.swap_conv2d',
+                    'bench.backward_step', 'bench.swap_conv2d', 'bench.swap_mha',
                     'bench.convert', 'bench.compile']:
                 if cmd.startswith(start):
                     fix_cmd_run(cmd, start)

@@ -103,6 +103,30 @@ Linear
      - |n|
 
 
+Multihead Attention
+~~~~~~~~~~~~~~~~~~~~
+.. list-table::
+   :widths: auto
+   :header-rows: 0
+   :stub-columns: 1
+   :align: left
+
+   * - Algorithm
+     - *standard*
+   * - *none*
+     - |y|
+   * - *sycl*
+     - |n|
+   * - *cudnn*
+     - |y|
+   * - *cublas*
+     - |n|
+   * - *mps*
+     - |n|
+   * - *metal*
+     - |n|
+
+
 *2D* MaxPool
 ~~~~~~~~~~~~
 .. list-table::

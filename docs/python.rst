@@ -10,6 +10,7 @@ Functions Providing Algorithmic Selection
 .. autofunction:: ai3.swap_operation
 .. autofunction:: ai3.convert
 .. autofunction:: ai3.swap_conv2d
+.. autofunction:: ai3.swap_mha
 
 Types
 ~~~~~

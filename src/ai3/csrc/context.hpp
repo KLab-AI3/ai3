@@ -132,11 +132,11 @@ class Context {
 #if defined USE_SYCL
     inline static void *sycl_queue() {
         if (sycl_init) {
-            return &sycl_q;
+            return sycl_q;
         }
-        sycl_q = sycl::queue(sycl::default_selector_v);
+        sycl_q = new sycl::queue(sycl::default_selector_v);
         sycl_init = true;
-        return &sycl_q;
+        return sycl_q;
     }
 #else
     inline static void *sycl_queue() {
@@ -186,7 +186,7 @@ class Context {
 #endif
 
 #if defined USE_SYCL
-    inline static sycl::queue sycl_q;
+    inline static sycl::queue *sycl_q = nullptr;
     inline static bool sycl_init = false;
 #endif
 };

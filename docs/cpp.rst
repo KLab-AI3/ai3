@@ -12,8 +12,12 @@ Classes
 .. doxygenclass:: Context
     :members:
 
-Available Customization
------------------------
+Namespaces
+----------
+.. doxygennamespace:: mha
+
+Customization
+-------------
 
 .. doxygengroup:: custom
 

@@ -132,7 +132,7 @@ template <typename... Args> [[noreturn]] void bail(Args... args) {
 }
 
 [[noreturn]] inline void no_user_def(const std::string &name) {
-    bail("trying to use custom ", name, " when no implementation exists");
+    bail("trying to use user ", name, " when no implementation exists");
 }
 
 [[noreturn]] inline void invalid_algo(const std::string &op,
@@ -145,18 +145,21 @@ template <typename... Args> [[noreturn]] void bail(Args... args) {
     bail("trying to get ", thing, " when ", platform, " is not supported");
 }
 
+template <typename T> [[noreturn]] inline void forward_not_implemented() {
+    bail("forward not implemented for: " + std::string(typeid(T).name()));
+}
+
 inline void warning(const std::string msg) {
     std::cerr << "warning: " << msg << std::endl;
 }
 
 inline void mps_metal_unsupported_double() {
-    errs::warning(
-        "MPS/metal does not support double precision, transforming tensors "
-        "to "
-        "float "
-        "precision and back see: "
-        "https://developer.apple.com/documentation/metalperformanceshaders/"
-        "mpsdatatype");
+    warning("MPS/metal does not support double precision, transforming tensors "
+            "to "
+            "float "
+            "precision and back see: "
+            "https://developer.apple.com/documentation/metalperformanceshaders/"
+            "mpsdatatype");
 }
 
 template <typename... Args> void bail_if(bool check, Args... args) {
@@ -204,6 +207,8 @@ namespace sample_dims {
 const int LINEAR = 1;
 const int POOL2D = 3;
 const int CONV2D = 3;
+const int MHA_NOT_PROJECTED = 3;
+const int MHA_PROJECTED = 4;
 const int ACTIVATION = -1;
 const int FLATTEN = -1;
 }; // namespace sample_dims

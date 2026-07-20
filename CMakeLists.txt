@@ -7,12 +7,18 @@ project(
     LANGUAGES CXX)
 
 set(LIBRARIES)
-set(TARGET_PROPERTIES)
+set(CXX_PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+)
+set(CUDA_PROPERTIES)
 set(COMPILE_OPTIONS)
+set(CXX_COMPILE_OPTIONS)
+set(CXX_LINK_OPTIONS)
 if(NOT WIN32)
     list(APPEND COMPILE_OPTIONS -Wfatal-errors)
 endif()
-set(LINK_OPTIONS)
 set(INCLUDE_DIRECTORIES)
 set(LINK_DIRECTORIES)
 
@@ -25,6 +31,10 @@ list(APPEND INCLUDE_DIRECTORIES ${CSRC_DIR})
 set(CSRC_FILES
     ${CSRC_DIR}/ai3.cpp
 )
+
+set(CUDA_FILES)
+file(GLOB CUDA_FILES "${CSRC_DIR}/*.cu")
+list(APPEND CUDA_FILES "${CSRC_DIR}/cuda_utils.cpp")
 
 set(USE_MPS_METAL NO)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -47,13 +57,17 @@ find_package(CUDAToolkit)
 set(USE_CUBLAS NO)
 set(USE_CUDNN NO)
 if(CUDAToolkit_FOUND)
-    message(WARNING "Found Toolkit")
-    list(APPEND TARGET_PROPERTIES
+    message(STATUS  "Found Toolkit")
+    list(APPEND CXX_PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED TRUE
         CUDA_EXTENSIONS OFF
+        CUDA_ARCHITECTURES "native"
+    )
+    list(APPEND CUDA_PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
-        CUDA_ARCHITECTURES "86"
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        CUDA_RUNTIME_LIBRARY Shared
     )
     list(APPEND LIBRARIES CUDA::cudart)
 
@@ -84,16 +98,13 @@ set(USE_SYCL no)
 if(SYCL_FOUND)
     message(STATUS "Found SYCL")
     set(USE_SYCL YES)
-    set(CMAKE_CXX_COMPILER "${SYCL_COMPILER}")
+    set(CMAKE_CXX_COMPILER ${SYCL_COMPILER})
 
     list(APPEND INCLUDE_DIRECTORIES ${SYCL_INCLUDE_DIR} ${SYCL_SYCL_INCLUDE_DIR})
     list(APPEND LINK_DIRECTORIES ${SYCL_LIBRARY_DIR})
 
-    separate_arguments(SYCL_CFLAGS)
-    list(APPEND COMPILE_OPTIONS ${SYCL_CFLAGS})
-
-    separate_arguments(SYCL_LFLAGS)
-    list(APPEND LINK_OPTIONS ${SYCL_LFLAGS})
+    list(APPEND CXX_COMPILE_OPTIONS ${SYCL_CFLAGS})
+    list(APPEND CXX_LINK_OPTIONS ${SYCL_LFLAGS})
 endif()
 
 function(check_and_add_impl file platform_label platform_ext)
@@ -110,57 +121,76 @@ function(check_and_add_impl file platform_label platform_ext)
     endif()
 endfunction()
 
-function(use_supported_platform_impls op)
+function(use_supported_platform_impls op use_non_plain)
     file(GLOB IMPLS "${CSRC_DIR}/${op}/*_plain.cpp")
 
-    if(USE_CUDNN)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "cudnn" "cpp")
-        endforeach()
-    endif()
+    if(use_non_plain)
+        if(USE_CUDNN)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "cudnn" "cpp")
+            endforeach()
+        endif()
 
-    if(USE_CUBLAS)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "cublas" "cpp")
-        endforeach()
-    endif()
+        if(USE_CUBLAS)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "cublas" "cpp")
+            endforeach()
+        endif()
 
-    if(USE_MPS_METAL)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "mps" "mm")
-        endforeach()
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "metal" "mm")
-        endforeach()
-    endif()
+        if(USE_MPS_METAL)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "mps" "mm")
+            endforeach()
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "metal" "mm")
+            endforeach()
+        endif()
 
-    if(USE_SYCL)
-        foreach(FILE ${IMPLS})
-            check_and_add_impl(${FILE} "sycl" "cpp")
-        endforeach()
+        if(USE_SYCL)
+            foreach(FILE ${IMPLS})
+                check_and_add_impl(${FILE} "sycl" "cpp")
+            endforeach()
+        endif()
     endif()
 
     list(APPEND CSRC_FILES ${IMPLS})
     set(CSRC_FILES ${CSRC_FILES} PARENT_SCOPE)
 endfunction()
 
-use_supported_platform_impls("conv2d")
-use_supported_platform_impls("linear")
-use_supported_platform_impls("avgpool2d")
-use_supported_platform_impls("adaptiveavgpool2d")
-use_supported_platform_impls("maxpool2d")
-use_supported_platform_impls("relu")
-use_supported_platform_impls("flatten")
+use_supported_platform_impls("mha" YES)
+use_supported_platform_impls("conv2d" YES)
+use_supported_platform_impls("linear" YES)
+use_supported_platform_impls("avgpool2d" YES)
+use_supported_platform_impls("adaptiveavgpool2d" YES)
+use_supported_platform_impls("maxpool2d" YES)
+use_supported_platform_impls("relu" YES)
+use_supported_platform_impls("flatten" YES)
+
+set(CUDA_ENABLED NO)
+if(CUDA_FILES AND CUDAToolkit_FOUND)
+    enable_language(CUDA)
+    list(APPEND CSRC_FILES ${CUDA_FILES})
+    set(CUDA_ENABLED YES)
+endif()
 
 pybind11_add_module(_core MODULE ${CSRC_FILES})
 set_target_properties(_core PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
-    CXX_EXTENSIONS NO
-    ${TARGET_PROPERTIES}
+    ${CXX_PROPERTIES}
 )
-target_compile_options(_core PRIVATE ${COMPILE_OPTIONS})
-target_link_options(_core PRIVATE ${LINK_OPTIONS})
+if(CUDA_ENABLED)
+    set_target_properties(_core PROPERTIES
+        $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_PROPERTIES}>
+    )
+endif()
+
+target_compile_options(_core PRIVATE
+    ${COMPILE_OPTIONS}
+    $<$<COMPILE_LANGUAGE:CXX>:${CXX_COMPILE_OPTIONS}>
+)
+
+target_link_options(_core PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${CXX_LINK_OPTIONS}>
+)
 target_link_libraries(_core PRIVATE ${LIBRARIES})
 target_include_directories(_core PRIVATE ${INCLUDE_DIRECTORIES})
 target_link_directories(_core PRIVATE ${LINK_DIRECTORIES})
@@ -179,6 +209,10 @@ endif()
 
 if(USE_SYCL)
     target_compile_definitions(_core PRIVATE USE_SYCL)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "debug")
+    target_compile_definitions(_core PRIVATE DEBUG_MODE)
 endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/custom.cmake")

@@ -18,8 +18,18 @@ class UnsupportedCallableError(Exception):
             f'unsupported callable: {module}')
 
 
+class UnsupportedConversion(Exception):
+    def __init__(self, module: str):
+        super().__init__(
+            f'cannot convert: {module}')
+
+
 def unsupported_mod(module) -> NoReturn:
     raise UnsupportedCallableError(str(module))
+
+
+def cannot_convert(module) -> NoReturn:
+    raise UnsupportedConversion(str(module))
 
 
 def bail_if(check, message):
