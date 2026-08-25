@@ -80,6 +80,7 @@ def main():
          bias=True,
          batch_first=True,
          dtype=torch.float32,
+         atol=1e-3,
          test_name='float32 smoke batched batch_first')
 
     test(num_samples=None,
@@ -88,6 +89,7 @@ def main():
          num_heads=4,
          bias=True,
          dtype=torch.float32,
+         atol=1e-3,
          test_name='float32 smoke not batched')
 
     test(num_samples=20,

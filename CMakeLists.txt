@@ -34,7 +34,6 @@ set(CSRC_FILES
 
 set(CUDA_FILES)
 file(GLOB CUDA_FILES "${CSRC_DIR}/*.cu")
-list(APPEND CUDA_FILES "${CSRC_DIR}/cuda_utils.cpp")
 
 set(USE_MPS_METAL NO)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")

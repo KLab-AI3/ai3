@@ -12,19 +12,6 @@ template <> inline cudaDataType cuda_data_type<float>() { return CUDA_R_32F; }
 
 template <> inline cudaDataType cuda_data_type<double>() { return CUDA_R_64F; }
 
-class StreamSwapper {
-  public:
-    StreamSwapper();
-    ~StreamSwapper();
-
-    void sync();
-    cudaStream_t operator()();
-
-  private:
-    cudaStream_t streams[2];
-    int current;
-};
-
 #if defined DEBUG_MODE
 #define CUDA_CHECK(status)                                                     \
     if (status != cudaSuccess) {                                               \

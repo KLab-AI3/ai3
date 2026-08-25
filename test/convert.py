@@ -23,5 +23,19 @@ def runner(module: torch.nn.Module, input_data: torch.Tensor, name: str):
                 f'{name} swap backend using {algo}, {model_zoo.BATCH} samples')
 
 
+def mha_runner(module: torch.nn.Module, input_data: torch.Tensor, name: str):
+    target = module(input_data)
+    with torch.inference_mode():
+        try:
+            ai3_model = ai3.convert(module, {'mha': 'default'})
+        except UnsupportedCallableError as e:
+            print(f'  {e} so skipping')
+            return
+        output = ai3_model(input_data)
+        compare_tensors(
+            output, target,
+            f'{name} convert mha, {model_zoo.BATCH} samples')
+
+
 if __name__ == '__main__':
     model_zoo.from_args(runner, sys.argv)
